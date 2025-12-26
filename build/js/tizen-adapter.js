@@ -190,10 +190,46 @@
         }
     }
 
+    /**
+     * Get platform information including OS version and device details
+     * @returns {Object} Platform information
+     */
+    function getPlatformInfo() {
+        var platformInfo = {
+            deviceName: 'Samsung TV',
+            osVersion: 'Unknown',
+            firmwareVersion: 'Unknown',
+            modelName: 'Unknown'
+        };
+
+        try {
+            // Try to get firmware version from webapis
+            if (typeof webapis !== 'undefined' && webapis.productinfo) {
+                // Get firmware version (Tizen version)
+                if (typeof webapis.productinfo.getFirmware === 'function') {
+                    platformInfo.firmwareVersion = webapis.productinfo.getFirmware();
+                    platformInfo.osVersion = 'Tizen ' + platformInfo.firmwareVersion;
+                }
+                
+                // Get model name
+                if (typeof webapis.productinfo.getRealModel === 'function') {
+                    platformInfo.modelName = webapis.productinfo.getRealModel();
+                } else if (typeof webapis.productinfo.getModel === 'function') {
+                    platformInfo.modelName = webapis.productinfo.getModel();
+                }
+            }
+        } catch (e) {
+            console.log('[Tizen] Error getting platform info:', e);
+        }
+
+        return platformInfo;
+    }
+
     // Create the global Tizen platform object
     window.TizenPlatform = {
         AppInfo: AppInfo,
         getSystemInfo: getSystemInfo,
+        getPlatformInfo: getPlatformInfo,
         registerKeys: registerKeys,
         unregisterKey: unregisterKey,
         platformBack: platformBack,

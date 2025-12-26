@@ -54,7 +54,7 @@ var VersionChecker = (function() {
     function shouldCheckForUpdate() {
         if (!storage) return true;
 
-        const lastCheck = storage.getItem(STORAGE_KEY_LAST_CHECK);
+        const lastCheck = storage.get(STORAGE_KEY_LAST_CHECK, false);
         if (!lastCheck) return true;
 
         const lastCheckTime = parseInt(lastCheck, 10);
@@ -69,7 +69,7 @@ var VersionChecker = (function() {
      */
     function markChecked() {
         if (storage) {
-            storage.setItem(STORAGE_KEY_LAST_CHECK, Date.now().toString());
+            storage.set(STORAGE_KEY_LAST_CHECK, Date.now().toString(), false);
         }
     }
 
@@ -81,7 +81,7 @@ var VersionChecker = (function() {
     function isVersionDismissed(version) {
         if (!storage) return false;
 
-        const dismissedVersion = storage.getItem(STORAGE_KEY_DISMISSED_VERSION);
+        const dismissedVersion = storage.get(STORAGE_KEY_DISMISSED_VERSION, false);
         return dismissedVersion === version;
     }
 
@@ -91,7 +91,7 @@ var VersionChecker = (function() {
      */
     function dismissVersion(version) {
         if (storage) {
-            storage.setItem(STORAGE_KEY_DISMISSED_VERSION, version);
+            storage.set(STORAGE_KEY_DISMISSED_VERSION, version, false);
         }
     }
 

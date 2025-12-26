@@ -147,6 +147,39 @@ var SettingsController = (function() {
     }
 
     /**
+     * Update platform information in the About section
+     * @private
+     */
+    function updatePlatformInfo() {
+        try {
+            if (typeof TizenPlatform !== 'undefined' && TizenPlatform.getPlatformInfo) {
+                var platformInfo = TizenPlatform.getPlatformInfo();
+                
+                // Find the platform setting-value elements in the About section
+                var aboutPanel = document.getElementById('aboutPanel');
+                if (aboutPanel) {
+                    var settingItems = aboutPanel.querySelectorAll('.setting-item');
+                    settingItems.forEach(function(item) {
+                        var title = item.querySelector('.setting-title');
+                        if (title && title.textContent.trim() === 'Platform') {
+                            var valueElement = item.querySelector('.setting-value');
+                            var descElement = item.querySelector('.setting-description');
+                            if (valueElement) {
+                                valueElement.textContent = platformInfo.deviceName;
+                            }
+                            if (descElement && platformInfo.osVersion !== 'Unknown') {
+                                descElement.textContent = platformInfo.osVersion;
+                            }
+                        }
+                    });
+                }
+            }
+        } catch (e) {
+            console.log('[Settings] Error updating platform info:', e);
+        }
+    }
+
+    /**
      * Display current user information in the UI
      * @private
      */
@@ -211,6 +244,9 @@ var SettingsController = (function() {
                 }
             });
         }
+        
+        // Update platform information in About section
+        updatePlatformInfo();
     }
 
     /**
