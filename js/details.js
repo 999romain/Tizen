@@ -13,6 +13,8 @@ var DetailsController = (function() {
     const focusManager = {
         currentSection: 'buttons',
         currentIndex: 0,
+        inNavBar: false,
+        navBarIndex: 0,
         sections: ['buttons', 'nextup', 'seasons', 'episodes', 'remainingepisodes', 'cast', 'similar']
     };
     let modalFocusableItems = [];
@@ -238,6 +240,12 @@ var DetailsController = (function() {
             return;
         }
         
+        // Handle navbar navigation
+        if (focusManager.inNavBar) {
+            handleNavBarNavigation(evt);
+            return;
+        }
+        
         if (evt.keyCode === KeyCodes.BACK || evt.keyCode === KeyCodes.ESCAPE) {
             goBack();
             return;
@@ -265,7 +273,12 @@ var DetailsController = (function() {
                 
             case KeyCodes.UP:
                 evt.preventDefault();
-                moveToPreviousSection();
+                // If at top section (buttons), go to navbar
+                if (focusManager.currentSection === 'buttons') {
+                    focusToNavBar();
+                } else {
+                    moveToPreviousSection();
+                }
                 break;
                 
             case KeyCodes.DOWN:
@@ -363,6 +376,91 @@ var DetailsController = (function() {
                 items[0].focus();
                 return;
             }
+        }
+    }
+
+    /**
+     * Move focus to the navigation bar
+     * @private
+     */
+    function focusToNavBar() {
+        focusManager.inNavBar = true;
+        var navButtons = Array.from(document.querySelectorAll('.nav-left .nav-btn, .nav-center .nav-btn')).filter(function(btn) {
+            return btn.offsetParent !== null;
+        });
+        if (navButtons.length > 0) {
+            focusManager.navBarIndex = Math.min(focusManager.navBarIndex, navButtons.length - 1);
+            navButtons[focusManager.navBarIndex].classList.add('focused');
+            navButtons[focusManager.navBarIndex].focus();
+            if (typeof NavbarController !== 'undefined' && NavbarController.scrollNavButtonIntoView) {
+                NavbarController.scrollNavButtonIntoView(navButtons[focusManager.navBarIndex]);
+            }
+        }
+    }
+
+    /**
+     * Handle keyboard navigation within navbar
+     * @param {KeyboardEvent} evt - Keyboard event
+     * @private
+     */
+    function handleNavBarNavigation(evt) {
+        var navButtons = Array.from(document.querySelectorAll('.nav-left .nav-btn, .nav-center .nav-btn')).filter(function(btn) {
+            return btn.offsetParent !== null;
+        });
+        
+        navButtons.forEach(function(btn) {
+            btn.classList.remove('focused');
+        });
+        
+        switch (evt.keyCode) {
+            case KeyCodes.LEFT:
+                evt.preventDefault();
+                if (focusManager.navBarIndex > 0) {
+                    focusManager.navBarIndex--;
+                }
+                navButtons[focusManager.navBarIndex].classList.add('focused');
+                navButtons[focusManager.navBarIndex].focus();
+                if (typeof NavbarController !== 'undefined' && NavbarController.scrollNavButtonIntoView) {
+                    NavbarController.scrollNavButtonIntoView(navButtons[focusManager.navBarIndex]);
+                }
+                break;
+                
+            case KeyCodes.RIGHT:
+                evt.preventDefault();
+                if (focusManager.navBarIndex < navButtons.length - 1) {
+                    focusManager.navBarIndex++;
+                }
+                navButtons[focusManager.navBarIndex].classList.add('focused');
+                navButtons[focusManager.navBarIndex].focus();
+                if (typeof NavbarController !== 'undefined' && NavbarController.scrollNavButtonIntoView) {
+                    NavbarController.scrollNavButtonIntoView(navButtons[focusManager.navBarIndex]);
+                }
+                break;
+                
+            case KeyCodes.DOWN:
+                evt.preventDefault();
+                focusManager.inNavBar = false;
+                focusManager.currentSection = 'buttons';
+                var items = getCurrentSectionItems();
+                if (items && items.length > 0) {
+                    focusManager.currentIndex = 0;
+                    items[0].focus();
+                }
+                break;
+                
+            case KeyCodes.ENTER:
+                evt.preventDefault();
+                var currentBtn = navButtons[focusManager.navBarIndex];
+                if (currentBtn && currentBtn.style.display !== 'none') {
+                    currentBtn.click();
+                }
+                break;
+                
+            case KeyCodes.BACK:
+            case KeyCodes.ESCAPE:
+                evt.preventDefault();
+                goBack();
+                break;
         }
     }
 
