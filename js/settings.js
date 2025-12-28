@@ -587,23 +587,6 @@ var SettingsController = (function () {
          }
       }
 
-      var jellyseerrAutoRequestValue = document.getElementById(
-         "jellyseerrAutoRequestValue"
-      );
-      if (jellyseerrAutoRequestValue) {
-         jellyseerrAutoRequestValue.textContent = settings.jellyseerrAutoRequest
-            ? "On"
-            : "Off";
-      }
-
-      var jellyseerrNotificationsValue = document.getElementById(
-         "jellyseerrNotificationsValue"
-      );
-      if (jellyseerrNotificationsValue) {
-         jellyseerrNotificationsValue.textContent =
-            settings.jellyseerrNotifications ? "On" : "Off";
-      }
-
       var jellyseerrFilterNSFWValue = document.getElementById(
          "jellyseerrFilterNSFWValue"
       );
@@ -1249,10 +1232,10 @@ var SettingsController = (function () {
             updateSettingValues();
             // Update clock immediately
             if (
-               typeof NavbarComponent !== "undefined" &&
-               NavbarComponent.updateClock
+               typeof NavbarController !== "undefined" &&
+               NavbarController.updateClock
             ) {
-               NavbarComponent.updateClock();
+               NavbarController.updateClock();
             }
             break;
 
@@ -1355,12 +1338,6 @@ var SettingsController = (function () {
             testJellyseerrConnection();
             break;
 
-         case "jellyseerrAutoRequest":
-            settings.jellyseerrAutoRequest = !settings.jellyseerrAutoRequest;
-            saveSettings();
-            updateSettingValues();
-            break;
-
          case "imageType":
             // Toggle between: Primary <-> Thumb
             if (settings.imageType === "Primary") {
@@ -1380,23 +1357,6 @@ var SettingsController = (function () {
                !settings.mergeContinueWatchingNextUp;
             saveSettings();
             updateSettingValues();
-            break;
-
-         case "jellyseerrQuality":
-            settings.jellyseerrQuality =
-               settings.jellyseerrQuality === "standard" ? "4k" : "standard";
-            saveSettings();
-            updateSettingValues();
-            break;
-
-         case "jellyseerrNotifications":
-            settings.jellyseerrNotifications =
-               !settings.jellyseerrNotifications;
-            saveSettings();
-            updateSettingValues();
-
-            // Sync notification preferences with Jellyseerr server
-            syncNotificationPreferences();
             break;
 
          case "jellyseerrShowDiscover":
