@@ -191,26 +191,44 @@ var ServerLogger = (function () {
       var xhr = new XMLHttpRequest();
       xhr.open("POST", url, true);
       xhr.setRequestHeader("Content-Type", "text/plain");
-      xhr.setRequestHeader(
-         "X-Emby-Authorization",
-         buildAuthHeader(auth.accessToken)
-      );
+      
+      // Add both authorization headers for maximum compatibility with reverse proxies
+      var authHeader = buildAuthHeader(auth.accessToken);
+      xhr.setRequestHeader("X-Emby-Authorization", authHeader);
+      xhr.setRequestHeader("Authorization", authHeader);
+      
+      // Also add the token directly as some reverse proxies strip custom headers
+      if (auth.accessToken) {
+         xhr.setRequestHeader("X-MediaBrowser-Token", auth.accessToken);
+      }
+      
+      // Set timeout for slow connections
+      xhr.timeout = 10000;
 
       xhr.onreadystatechange = function () {
          if (xhr.readyState === 4) {
             if (xhr.status === 200 || xhr.status === 204) {
                console.log("[ServerLogger] Log sent to server successfully");
+            } else if (xhr.status === 401 || xhr.status === 403) {
+               console.warn(
+                  "[ServerLogger] Authentication failed sending log to server (" + xhr.status + "). Check reverse proxy headers."
+               );
             } else if (xhr.status !== 0) {
                console.warn(
                   "[ServerLogger] Failed to send log to server:",
-                  xhr.status
+                  xhr.status,
+                  xhr.statusText
                );
             }
          }
       };
 
       xhr.onerror = function () {
-         console.warn("[ServerLogger] Network error sending log to server");
+         console.warn("[ServerLogger] Network error sending log to server - may be CORS/reverse proxy issue");
+      };
+      
+      xhr.ontimeout = function () {
+         console.warn("[ServerLogger] Timeout sending log to server");
       };
 
       try {

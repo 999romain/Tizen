@@ -736,15 +736,30 @@ var PlayerController = (function () {
          AutoOpenLiveStream: isLiveTV,
       };
 
+      console.log("[Player] Requesting playback info from:", playbackUrl);
+      
+      // Log to server for diagnostics
+      if (typeof ServerLogger !== "undefined") {
+         ServerLogger.logPlaybackInfo("Requesting playback info", {
+            itemId: itemId,
+            itemName: itemData ? itemData.Name : "Unknown",
+            itemType: itemData ? itemData.Type : "Unknown",
+            serverAddress: auth.serverAddress
+         });
+      }
+      
       ajax.request(playbackUrl, {
          method: "POST",
          headers: {
             "X-Emby-Authorization": JellyfinAPI.getAuthHeader(auth.accessToken),
+            "X-MediaBrowser-Token": auth.accessToken,
             "Content-Type": "application/json",
          },
          data: requestData,
          success: function (response) {
             playbackInfo = response;
+            
+            console.log("[Player] Playback info received successfully");
 
             // Detect if this is Dolby Vision content and set flag for adapter selection
             if (
@@ -757,6 +772,34 @@ var PlayerController = (function () {
                        return s.Type === "Video";
                     })
                   : null;
+               var audioStream = mediaSource.MediaStreams
+                  ? mediaSource.MediaStreams.find(function (s) {
+                       return s.Type === "Audio";
+                    })
+                  : null;
+
+               // Log detailed media info for debugging
+               console.log("[Player] Media Source Info:", {
+                  container: mediaSource.Container,
+                  videoCodec: videoStream ? videoStream.Codec : "none",
+                  audioCodec: audioStream ? audioStream.Codec : "none",
+                  supportsDirectPlay: mediaSource.SupportsDirectPlay,
+                  supportsDirectStream: mediaSource.SupportsDirectStream,
+                  supportsTranscoding: mediaSource.SupportsTranscoding,
+                  transcodingUrl: mediaSource.TranscodingUrl ? "Present" : "None"
+               });
+               
+               // Log to server for diagnostics
+               if (typeof ServerLogger !== "undefined") {
+                  ServerLogger.logPlaybackInfo("Playback info received", {
+                     itemId: itemId,
+                     container: mediaSource.Container,
+                     videoCodec: videoStream ? videoStream.Codec : "none",
+                     audioCodec: audioStream ? audioStream.Codec : "none",
+                     supportsDirectPlay: mediaSource.SupportsDirectPlay,
+                     supportsTranscoding: mediaSource.SupportsTranscoding
+                  });
+               }
 
                isDolbyVisionMedia =
                   videoStream &&
@@ -786,6 +829,8 @@ var PlayerController = (function () {
             }
          },
          error: function (err) {
+            console.error("[Player] PlaybackInfo request failed:", err);
+            
             var title = "Playback Error";
             var message = "Failed to get playback information from the server.";
             var details = "";
@@ -796,6 +841,18 @@ var PlayerController = (function () {
                   "The Jellyfin server encountered an error processing this item.";
                details =
                   "This may indicate:\n• Corrupted or incompatible media file\n• Missing codecs on the server\n• Server configuration issue\n\nError Code: 500\n\nCheck the Jellyfin server logs for more details.";
+            } else if (err && (err.error === 401 || err.error === 403)) {
+               title = "Authentication Error";
+               message =
+                  "Failed to authenticate with the server.";
+               details =
+                  "This may indicate:\n• Session expired\n• Reverse proxy not forwarding authentication headers\n• Server configuration issue\n\nError Code: " + err.error + "\n\nIf you're using a reverse proxy, ensure it forwards these headers:\n• X-Emby-Authorization\n• X-MediaBrowser-Token";
+            } else if (err && err.error === 0) {
+               title = "Network Error";
+               message =
+                  "Unable to reach the server.";
+               details =
+                  "This may indicate:\n• Server is unreachable\n• CORS misconfiguration on reverse proxy\n• Network connectivity issue\n\nCheck your server URL and network connection.";
             } else if (err && err.error) {
                details = "Error Code: " + err.error;
                if (err.responseData && err.responseData.Message) {
@@ -820,37 +877,38 @@ var PlayerController = (function () {
       });
    }
 
+   /**
+    * Get device profile for PlaybackInfo request
+    * Uses BrowserDeviceProfile for accurate capability detection
+    */
    function getDeviceProfile() {
+      // Use the new comprehensive device profile if available
+      if (typeof BrowserDeviceProfile !== "undefined") {
+         var profile = BrowserDeviceProfile.getDeviceProfile();
+         console.log("[Player] Using BrowserDeviceProfile:", {
+            directPlayProfiles: profile.DirectPlayProfiles.length,
+            transcodingProfiles: profile.TranscodingProfiles.length,
+            codecProfiles: profile.CodecProfiles.length,
+            isTizen: BrowserDeviceProfile.isTizen(),
+            tizenVersion: BrowserDeviceProfile.getTizenVersion(),
+            canPlayHevc: BrowserDeviceProfile.canPlayHevc(),
+            supportsHdr10: BrowserDeviceProfile.supportsHdr10()
+         });
+         return profile;
+      }
+      
+      // Fallback to basic profile if BrowserDeviceProfile not loaded
+      console.warn("[Player] BrowserDeviceProfile not available, using fallback");
       return {
          MaxStreamingBitrate: 120000000,
          MaxStaticBitrate: 100000000,
          MusicStreamingTranscodingBitrate: 384000,
          DirectPlayProfiles: [
-            // HEVC/H.265 with Dolby Vision and HDR10 support
             {
-               Container: "mp4",
+               Container: "mp4,mkv",
                Type: "Video",
-               VideoCodec: "hevc,h264,avc",
-               AudioCodec: "eac3,ac3,aac,mp3,dts,truehd,flac",
-            },
-            {
-               Container: "mkv",
-               Type: "Video",
-               VideoCodec: "hevc,h264,avc",
-               AudioCodec: "eac3,ac3,aac,mp3,dts,truehd,flac",
-            },
-            // Explicitly list Dolby Vision profiles (dvhe/dvh1)
-            {
-               Container: "mp4",
-               Type: "Video",
-               VideoCodec: "dvhe,dvh1",
-               AudioCodec: "eac3,ac3,aac,mp3,dts,truehd",
-            },
-            {
-               Container: "mkv",
-               Type: "Video",
-               VideoCodec: "dvhe,dvh1",
-               AudioCodec: "eac3,ac3,aac,mp3,dts,truehd",
+               VideoCodec: "h264,hevc",
+               AudioCodec: "aac,mp3,ac3,eac3",
             },
          ],
          TranscodingProfiles: [
@@ -863,88 +921,14 @@ var PlayerController = (function () {
                Context: "Streaming",
                MaxAudioChannels: "6",
             },
-            {
-               Container: "mp4",
-               Type: "Video",
-               AudioCodec: "aac,mp3",
-               VideoCodec: "h264",
-               Context: "Static",
-            },
          ],
          ContainerProfiles: [],
-         CodecProfiles: [
-            {
-               Type: "Video",
-               Codec: "h264",
-               Conditions: [
-                  {
-                     Condition: "LessThanEqual",
-                     Property: "Width",
-                     Value: "1920",
-                  },
-                  {
-                     Condition: "LessThanEqual",
-                     Property: "Height",
-                     Value: "1000",
-                  },
-                  {
-                     Condition: "LessThanEqual",
-                     Property: "VideoFramerate",
-                     Value: "60",
-                  },
-                  {
-                     Condition: "LessThanEqual",
-                     Property: "VideoBitrate",
-                     Value: "40000000",
-                  },
-               ],
-            },
-            {
-               Type: "Video",
-               Codec: "hevc",
-               Conditions: [
-                  {
-                     Condition: "LessThanEqual",
-                     Property: "Width",
-                     Value: "3840",
-                  },
-                  {
-                     Condition: "LessThanEqual",
-                     Property: "Height",
-                     Value: "2000",
-                  },
-                  {
-                     Condition: "LessThanEqual",
-                     Property: "VideoFramerate",
-                     Value: "60",
-                  },
-                  {
-                     Condition: "LessThanEqual",
-                     Property: "VideoBitrate",
-                     Value: "100000000",
-                  },
-               ],
-            },
-            {
-               Type: "VideoAudio",
-               Conditions: [
-                  {
-                     Condition: "LessThanEqual",
-                     Property: "AudioChannels",
-                     Value: "6",
-                  },
-               ],
-            },
-         ],
+         CodecProfiles: [],
          SubtitleProfiles: [
-            // For HLS streaming, subtitles should be burned in (encoded into video)
+            { Format: "vtt", Method: "External" },
             { Format: "srt", Method: "Encode" },
             { Format: "ass", Method: "Encode" },
             { Format: "ssa", Method: "Encode" },
-            { Format: "vtt", Method: "Encode" },
-            { Format: "sub", Method: "Encode" },
-            { Format: "idx", Method: "Encode" },
-            { Format: "subrip", Method: "Encode" },
          ],
          ResponseProfiles: [],
       };
@@ -1021,27 +1005,55 @@ var PlayerController = (function () {
             videoStream.Codec.toLowerCase().startsWith("hev1") ||
             videoStream.Codec.toLowerCase().startsWith("hvc1")) &&
          videoStream.BitDepth === 10;
+      var isHDR = videoStream && 
+         (videoStream.VideoRangeType === "HDR10" || 
+          videoStream.VideoRangeType === "HDR10Plus" ||
+          videoStream.VideoRangeType === "HLG" ||
+          videoStream.VideoRangeType === "DOVIWithHDR10");
 
-      var safeVideoCodecs = [
-         "h264",
-         "avc",
-         "hevc",
-         "h265",
-         "hev1",
-         "hvc1",
-         "dvhe",
-         "dvh1",
-      ];
-      var safeAudioCodecs = [
-         "aac",
-         "mp3",
-         "ac3",
-         "eac3",
-         "dts",
-         "truehd",
-         "flac",
-      ];
-      var safeContainers = ["mp4", "mkv"];
+      // Build supported codecs list based on actual device capabilities
+      var safeVideoCodecs = ["h264", "avc"];
+      var safeAudioCodecs = ["aac", "mp3"];
+      var safeContainers = ["mp4"];
+
+      // Use BrowserDeviceProfile if available for accurate capability detection
+      if (typeof BrowserDeviceProfile !== "undefined") {
+         if (BrowserDeviceProfile.canPlayHevc()) {
+            safeVideoCodecs.push("hevc", "h265", "hev1", "hvc1");
+            // Only add DV codecs if we can play the HDR fallback
+            if (BrowserDeviceProfile.supportsHdr10()) {
+               safeVideoCodecs.push("dvhe", "dvh1");
+            }
+         }
+         if (BrowserDeviceProfile.canPlayAv1()) {
+            safeVideoCodecs.push("av1");
+         }
+         if (BrowserDeviceProfile.canPlayMkv()) {
+            safeContainers.push("mkv");
+         }
+         if (BrowserDeviceProfile.isTizen()) {
+            safeContainers.push("ts", "mpegts");
+            safeAudioCodecs.push("ac3", "eac3", "pcm_s16le", "pcm_s24le");
+            // DTS not supported on Tizen 4.0+
+            if (BrowserDeviceProfile.getTizenVersion() < 4) {
+               safeAudioCodecs.push("dts", "dca");
+            }
+         }
+      } else {
+         // Fallback to basic assumptions
+         safeVideoCodecs.push("hevc", "h265", "hev1", "hvc1", "dvhe", "dvh1");
+         safeAudioCodecs.push("ac3", "eac3", "dts", "truehd", "flac");
+         safeContainers.push("mkv");
+      }
+
+      console.log("[Player] Codec support check:", {
+         container: mediaSource.Container,
+         videoCodec: videoStream ? videoStream.Codec : "none",
+         audioCodec: audioStream ? audioStream.Codec : "none",
+         safeContainers: safeContainers,
+         safeVideoCodecs: safeVideoCodecs,
+         safeAudioCodecs: safeAudioCodecs
+      });
 
       var canDirectPlay =
          mediaSource.SupportsDirectPlay &&
@@ -1054,16 +1066,80 @@ var PlayerController = (function () {
          audioStream.Codec &&
          safeAudioCodecs.indexOf(audioStream.Codec.toLowerCase()) !== -1;
 
+      // Log why direct play might not be possible
+      if (!canDirectPlay && mediaSource.SupportsDirectPlay) {
+         var reason = [];
+         if (!mediaSource.Container || safeContainers.indexOf(mediaSource.Container.toLowerCase()) === -1) {
+            reason.push("Container '" + (mediaSource.Container || "unknown") + "' not in safe list");
+         }
+         if (!videoStream || !videoStream.Codec || safeVideoCodecs.indexOf(videoStream.Codec.toLowerCase()) === -1) {
+            reason.push("Video codec '" + (videoStream ? videoStream.Codec : "none") + "' not in safe list");
+         }
+         if (!audioStream || !audioStream.Codec || safeAudioCodecs.indexOf(audioStream.Codec.toLowerCase()) === -1) {
+            reason.push("Audio codec '" + (audioStream ? audioStream.Codec : "none") + "' not in safe list");
+         }
+         console.log("[Player] Direct play not possible despite server support:", reason.join(", "));
+         
+         if (typeof ServerLogger !== "undefined") {
+            ServerLogger.logPlaybackInfo("Direct play rejected by client", {
+               container: mediaSource.Container,
+               videoCodec: videoStream ? videoStream.Codec : "none",
+               audioCodec: audioStream ? audioStream.Codec : "none",
+               reasons: reason
+            });
+         }
+      }
+
       var canTranscode = mediaSource.SupportsTranscoding;
 
       var shouldUseDirectPlay = false;
       if (forcePlayMode === "direct") {
          shouldUseDirectPlay = canDirectPlay;
+         console.log("[Player] Force direct play mode selected");
       } else if (forcePlayMode === "transcode") {
          shouldUseDirectPlay = false;
+         console.log("[Player] Force transcode mode selected");
       } else {
-         shouldUseDirectPlay = canDirectPlay;
+         // Default behavior: prefer transcoding for high bit-depth content
+         // HEVC 10-bit and Dolby Vision can have compatibility issues on some Tizen devices
+         if (canDirectPlay && (isHEVC10bit || isDolbyVision)) {
+            // Check if we should try direct play or prefer transcoding
+            // On Tizen, HEVC Main 10 support varies by device/year
+            console.log("[Player] HEVC 10-bit or Dolby Vision detected, checking compatibility...");
+            
+            // Log the decision for debugging
+            if (typeof ServerLogger !== "undefined") {
+               ServerLogger.logPlaybackInfo("HEVC 10-bit/DV content detected", {
+                  isHEVC10bit: isHEVC10bit,
+                  isDolbyVision: isDolbyVision,
+                  isHDR: isHDR,
+                  bitDepth: videoStream ? videoStream.BitDepth : "unknown",
+                  profile: videoStream ? videoStream.Profile : "unknown",
+                  codec: videoStream ? videoStream.Codec : "unknown",
+                  videoRangeType: videoStream ? videoStream.VideoRangeType : "unknown",
+                  canDirectPlay: canDirectPlay,
+                  canTranscode: canTranscode
+               });
+            }
+            
+            // Still try direct play but health check will fallback if it fails
+            shouldUseDirectPlay = canDirectPlay;
+         } else {
+            shouldUseDirectPlay = canDirectPlay;
+         }
       }
+      
+      // Log the playback decision
+      console.log("[Player] Playback decision:", {
+         canDirectPlay: canDirectPlay,
+         canTranscode: canTranscode,
+         shouldUseDirectPlay: shouldUseDirectPlay,
+         isHEVC10bit: isHEVC10bit,
+         isDolbyVision: isDolbyVision,
+         videoCodec: videoStream ? videoStream.Codec : "none",
+         bitDepth: videoStream ? videoStream.BitDepth : "unknown",
+         profile: videoStream ? videoStream.Profile : "unknown"
+      });
 
       // Check if media source has a pre-configured transcoding URL (for Live TV)
       if (mediaSource.TranscodingUrl) {
@@ -1231,6 +1307,15 @@ var PlayerController = (function () {
                   (useDirectPlay ? "direct" : "stream") +
                   ")"
             );
+            
+            // Try to start playback immediately (don't wait for canplay)
+            // This helps detect codec issues faster
+            if (videoPlayer.paused) {
+               videoPlayer.play().catch(function(err) {
+                  console.log("[Player] play() failed (may be normal):", err.message);
+               });
+            }
+            
             if (useDirectPlay) {
                startPlaybackHealthCheck(mediaSource);
             }
@@ -1254,27 +1339,50 @@ var PlayerController = (function () {
 
       var checkCount = 0;
       var lastTime = videoPlayer.currentTime;
+      var playbackEverStarted = false;
 
       function checkHealth() {
-         // Stop checking after 3 attempts or if we're transcoding
-         if (checkCount >= 3 || isTranscoding) {
+         // Stop checking after 5 attempts or if we're transcoding
+         if (checkCount >= 5 || isTranscoding) {
             playbackHealthCheckTimer = null;
+            
+            // Final check: if playback never started after all attempts, force fallback
+            // Check both paused and not-paused states since codec issues can leave video stuck either way
+            if (!playbackEverStarted && videoPlayer.currentTime === 0) {
+               console.log("[Player] Playback never started after " + checkCount + " health checks, forcing fallback");
+               if (attemptTranscodeFallback(mediaSource, "Playback never started - possible codec issue")) {
+                  console.log("[Player] Falling back to HLS transcoding due to stuck playback");
+               }
+            }
             return;
          }
 
          checkCount++;
          var currentTime = videoPlayer.currentTime;
+         
+         // Track if playback ever progressed
+         if (currentTime > 0) {
+            playbackEverStarted = true;
+         }
 
-         // Check 1: Is playback stuck? (time not advancing)
-         var isStuck =
-            !videoPlayer.paused && currentTime === lastTime && currentTime > 0;
+         // Check 1: Is playback stuck? (time not advancing when it should)
+         var isStuck = !videoPlayer.paused && currentTime === lastTime;
+         
+         // Check 1b: Specifically detect stuck at 0:00 - common for unsupported codecs
+         // This can happen when video is paused OR playing but codec failed to initialize
+         var stuckAtStart = currentTime === 0 && 
+            videoPlayer.readyState < HTMLMediaElement.HAVE_FUTURE_DATA && checkCount >= 2;
+         
+         // Check 1c: Video still paused after several checks - canplay never fired
+         var stuckPaused = videoPlayer.paused && currentTime === 0 && 
+            videoPlayer.readyState < HTMLMediaElement.HAVE_METADATA && checkCount >= 3;
 
          // Check 2: Video element in bad state?
          var isBadState =
             videoPlayer.error ||
             videoPlayer.networkState === HTMLMediaElement.NETWORK_NO_SOURCE ||
             (videoPlayer.readyState < HTMLMediaElement.HAVE_CURRENT_DATA &&
-               !videoPlayer.paused);
+               checkCount >= 3);
 
          // Check 3: No video or audio tracks? (for containers with track support)
          var noTracks = false;
@@ -1283,15 +1391,44 @@ var PlayerController = (function () {
                videoPlayer.videoTracks.length === 0 ||
                videoPlayer.audioTracks.length === 0;
          }
+         
+         // Log current state for debugging
+         console.log("[Player] Health check #" + checkCount + ":", {
+            currentTime: currentTime,
+            paused: videoPlayer.paused,
+            readyState: videoPlayer.readyState,
+            networkState: videoPlayer.networkState,
+            hasError: !!videoPlayer.error
+         });
 
-         if (isStuck || isBadState || noTracks) {
+         if (isStuck || isBadState || noTracks || stuckAtStart || stuckPaused) {
             console.log("[Player] Playback health issue detected:", {
                stuck: isStuck,
+               stuckAtStart: stuckAtStart,
+               stuckPaused: stuckPaused,
                badState: isBadState,
                noTracks: noTracks,
                readyState: videoPlayer.readyState,
                networkState: videoPlayer.networkState,
             });
+            
+            // Log to server for diagnostics
+            if (typeof ServerLogger !== "undefined") {
+               ServerLogger.logPlaybackWarning("Direct play health check failed", {
+                  checkCount: checkCount,
+                  stuck: isStuck,
+                  stuckAtStart: stuckAtStart,
+                  stuckPaused: stuckPaused,
+                  badState: isBadState,
+                  noTracks: noTracks,
+                  readyState: videoPlayer.readyState,
+                  networkState: videoPlayer.networkState,
+                  currentTime: currentTime,
+                  paused: videoPlayer.paused,
+                  videoCodec: currentMediaSource ? currentMediaSource.VideoCodecs : "unknown",
+                  container: currentMediaSource ? currentMediaSource.Container : "unknown"
+               });
+            }
 
             playbackHealthCheckTimer = null;
             if (

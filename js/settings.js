@@ -260,18 +260,39 @@ var SettingsController = (function () {
 
       // Fetch and display server version
       var serverVersionValue = document.getElementById("serverVersionValue");
-      if (serverVersionValue && displayServer && displayAccessToken) {
-         JellyfinAPI.getSystemInfo(
-            displayServer,
-            displayAccessToken,
-            function (err, data) {
-               if (!err && data && data.Version) {
-                  serverVersionValue.textContent = data.Version;
-               } else {
-                  serverVersionValue.textContent = "Unknown";
+      if (serverVersionValue && displayServer) {
+         // Try authenticated endpoint first, then fall back to public endpoint
+         var tryPublicEndpoint = function() {
+            JellyfinAPI.getSystemInfo(
+               displayServer,
+               function (err, data) {
+                  if (!err && data && data.Version) {
+                     serverVersionValue.textContent = data.Version;
+                  } else {
+                     serverVersionValue.textContent = "Unknown";
+                     console.warn("[Settings] Failed to get server version from public endpoint:", err);
+                  }
                }
-            }
-         );
+            );
+         };
+         
+         if (displayAccessToken) {
+            JellyfinAPI.getSystemInfo(
+               displayServer,
+               displayAccessToken,
+               function (err, data) {
+                  if (!err && data && data.Version) {
+                     serverVersionValue.textContent = data.Version;
+                  } else {
+                     // Fallback to public endpoint (handles reverse proxy auth issues)
+                     console.log("[Settings] Authenticated system info failed, trying public endpoint...");
+                     tryPublicEndpoint();
+                  }
+               }
+            );
+         } else {
+            tryPublicEndpoint();
+         }
       }
 
       // Update platform information in About section
@@ -1432,19 +1453,38 @@ var SettingsController = (function () {
             break;
 
          case "sendTestLog":
+            console.log("[Settings] Test log button pressed, serverLogging:", settings.serverLogging);
             if (typeof ServerLogger !== "undefined" && settings.serverLogging) {
+               // Check if auth is available first
+               var testAuth = null;
+               if (typeof MultiServerManager !== "undefined" && MultiServerManager.getAuthForPage) {
+                  testAuth = MultiServerManager.getAuthForPage();
+               } else if (typeof JellyfinAPI !== "undefined" && JellyfinAPI.getStoredAuth) {
+                  testAuth = JellyfinAPI.getStoredAuth();
+               }
+               
+               if (!testAuth || !testAuth.accessToken) {
+                  console.log("[Settings] No auth available for test log");
+                  showAlert("Not logged in. Please log in first to send test logs.", "Error");
+                  break;
+               }
+               
+               console.log("[Settings] Sending test log to server:", testAuth.serverAddress);
                ServerLogger.logAppInfo("Test log from Moonfin settings", {
                   test: true,
                   timestamp: new Date().toISOString(),
                   appVersion: "1.1.1",
+                  serverAddress: testAuth.serverAddress
                });
                showAlert(
-                  "Test log sent to your Jellyfin server. Check Dashboard > Logs to verify.",
+                  "Test log sent to your Jellyfin server (" + testAuth.serverAddress + "). Check Dashboard > Logs to verify.",
                   "Success"
                );
             } else if (!settings.serverLogging) {
+               console.log("[Settings] Server logging is disabled");
                showAlert("Please enable server logging first.", "Info");
             } else {
+               console.log("[Settings] ServerLogger is not available");
                showAlert("Server logger is not available.", "Error");
             }
             break;

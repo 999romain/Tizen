@@ -1067,22 +1067,77 @@ class HTML5VideoAdapter extends VideoPlayerAdapter {
 
             this.emit('loaded', { url });
 
-            // Wait for video to be ready
+            // Wait for video to be ready with timeout
             return new Promise((resolve, reject) => {
-                const onCanPlay = () => {
+                let timeoutId = null;
+                
+                const cleanup = () => {
+                    if (timeoutId) clearTimeout(timeoutId);
                     this.videoElement.removeEventListener('canplay', onCanPlay);
+                    this.videoElement.removeEventListener('loadedmetadata', onLoadedMetadata);
                     this.videoElement.removeEventListener('error', onError);
+                };
+                
+                const onCanPlay = () => {
+                    console.log('[HTML5Adapter] canplay event fired');
+                    cleanup();
                     resolve();
                 };
                 
+                const onLoadedMetadata = () => {
+                    console.log('[HTML5Adapter] loadedmetadata event fired, waiting for canplay...');
+                    // Metadata loaded, extend timeout since we're making progress
+                    if (timeoutId) {
+                        clearTimeout(timeoutId);
+                        timeoutId = setTimeout(onTimeout, 15000); // Extend by 15 more seconds
+                    }
+                };
+                
                 const onError = (e) => {
-                    this.videoElement.removeEventListener('canplay', onCanPlay);
-                    this.videoElement.removeEventListener('error', onError);
-                    reject(e);
+                    console.error('[HTML5Adapter] Video error event:', e);
+                    console.error('[HTML5Adapter] Video error code:', this.videoElement.error ? this.videoElement.error.code : 'none');
+                    console.error('[HTML5Adapter] Video error message:', this.videoElement.error ? this.videoElement.error.message : 'none');
+                    
+                    // Log to server
+                    if (typeof ServerLogger !== 'undefined') {
+                        ServerLogger.logPlaybackError('HTML5 video load error', {
+                            errorCode: this.videoElement.error ? this.videoElement.error.code : 'unknown',
+                            errorMessage: this.videoElement.error ? this.videoElement.error.message : 'unknown',
+                            url: url.substring(0, 100)
+                        });
+                    }
+                    
+                    cleanup();
+                    reject(new Error('Video load error: ' + (this.videoElement.error ? this.videoElement.error.message : 'Unknown error')));
+                };
+                
+                const onTimeout = () => {
+                    console.warn('[HTML5Adapter] Video load timeout - readyState:', this.videoElement.readyState);
+                    
+                    // Log to server
+                    if (typeof ServerLogger !== 'undefined') {
+                        ServerLogger.logPlaybackWarning('HTML5 video load timeout', {
+                            readyState: this.videoElement.readyState,
+                            networkState: this.videoElement.networkState,
+                            url: url.substring(0, 100)
+                        });
+                    }
+                    
+                    cleanup();
+                    // Don't reject immediately - resolve and let health check handle fallback
+                    // This allows the player to try and may work on some devices
+                    resolve();
                 };
 
                 this.videoElement.addEventListener('canplay', onCanPlay);
+                this.videoElement.addEventListener('loadedmetadata', onLoadedMetadata);
                 this.videoElement.addEventListener('error', onError);
+                
+                // Set timeout for load (10 seconds initial)
+                timeoutId = setTimeout(onTimeout, 10000);
+                
+                // Try to trigger load
+                this.videoElement.load();
             });
 
         } catch (error) {
@@ -1160,12 +1215,16 @@ class HTML5VideoAdapter extends VideoPlayerAdapter {
             });
 
             const hls = new Hls(hlsConfig);
+            console.log('[HTML5+HLS.js] HLS instance created');
 
             let manifestParsed = false;
             let hasError = false;
 
+            console.log('[HTML5+HLS.js] Loading source...');
             hls.loadSource(url);
+            console.log('[HTML5+HLS.js] Attaching media...');
             hls.attachMedia(this.videoElement);
+            console.log('[HTML5+HLS.js] Waiting for manifest...');
 
             hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
                 manifestParsed = true;
@@ -1175,9 +1234,11 @@ class HTML5VideoAdapter extends VideoPlayerAdapter {
                     const level = data.levels[0];
                     console.log('[HTML5+HLS.js] First level:', level.width + 'x' + level.height, '@', level.bitrate, 'bps');
                 }
-                console.log('[HTML5+HLS.js] Audio tracks:', data.audioTracks?.length || 0);
+                console.log('[HTML5+HLS.js] Audio tracks:', (data.audioTracks && data.audioTracks.length) || 0);
                 
-                // Start playback
+                this.emit('loaded', { url });
+                this.emit('buffering', false);
+                
                 this.videoElement.play()
                     .then(() => {
                         console.log('[HTML5+HLS.js] Playback started');
@@ -1206,10 +1267,27 @@ class HTML5VideoAdapter extends VideoPlayerAdapter {
                 if (data.response) {
                     console.error('[HTML5+HLS.js] Response:', data.response.code, data.response.text);
                 }
+                if (data.url) {
+                    console.error('[HTML5+HLS.js] URL:', data.url.substring(0, 100));
+                }
+                if (data.reason) {
+                    console.error('[HTML5+HLS.js] Reason:', data.reason);
+                }
 
                 if (data.fatal) {
                     hasError = true;
                     console.error('[HTML5+HLS.js] Fatal error occurred');
+                    
+                    // Log to ServerLogger for diagnostics
+                    if (typeof ServerLogger !== 'undefined') {
+                        ServerLogger.logPlaybackError('HLS.js fatal error: ' + data.type + ' - ' + data.details, {
+                            errorType: data.type,
+                            errorDetails: data.details,
+                            responseCode: data.response ? data.response.code : 'N/A',
+                            url: data.url ? data.url.substring(0, 100) : 'N/A',
+                            reason: data.reason || 'Unknown'
+                        });
+                    }
                     
                     switch (data.type) {
                         case Hls.ErrorTypes.NETWORK_ERROR:
@@ -1217,9 +1295,19 @@ class HTML5VideoAdapter extends VideoPlayerAdapter {
                             if (data.response && data.response.code >= 400 && data.response.code < 500) {
                                 // 4xx errors are unrecoverable (auth, not found, etc.)
                                 console.error('[HTML5+HLS.js] Unrecoverable network error:', data.response.code);
+                                
+                                // Special handling for 401/403 - likely reverse proxy auth issue
+                                if (data.response.code === 401 || data.response.code === 403) {
+                                    console.error('[HTML5+HLS.js] Authentication error - check reverse proxy configuration');
+                                }
+                                
                                 hls.destroy();
                                 this.emit('error', { type: MediaError.SERVER_ERROR, details: data });
                                 reject(new Error(MediaError.SERVER_ERROR + ': HTTP ' + data.response.code));
+                            } else if (data.response && data.response.code === 0) {
+                                // Status 0 often means CORS issue or network unreachable
+                                console.error('[HTML5+HLS.js] Network error (status 0) - possible CORS or connectivity issue');
+                                hls.startLoad();
                             } else {
                                 // Try to recover from other network errors
                                 console.log('[HTML5+HLS.js] Attempting network error recovery...');
@@ -1256,7 +1344,7 @@ class HTML5VideoAdapter extends VideoPlayerAdapter {
             });
 
             this.hlsPlayer = hls;
-            this.emit('loaded', { url });
+            this.emit('buffering', true);
             
             setTimeout(() => {
                 if (!manifestParsed && !hasError) {
