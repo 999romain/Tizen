@@ -43,6 +43,50 @@ var PlayerController = (function () {
    let willUseDirectPlay = false; // Track if we plan to use direct play before loading
    let playbackHealthCheckTimer = null; // Timer for checking playback health
    let forcePlayMode = null; // User override for playback mode ('direct' or 'transcode')
+   
+   // Load persisted play mode on init
+   function loadForcePlayMode() {
+      if (typeof storage !== "undefined" && itemId) {
+         forcePlayMode = storage.get("forcePlayMode_" + itemId, false) || null;
+         if (forcePlayMode) {
+            console.log("[Player] Loaded persisted play mode:", forcePlayMode);
+         }
+      }
+   }
+   
+   // Save play mode to persist across reloads
+   function saveForcePlayMode(mode) {
+      if (typeof storage !== "undefined" && itemId) {
+         if (mode) {
+            storage.set("forcePlayMode_" + itemId, mode, false);
+            console.log("[Player] Saved play mode to storage:", mode);
+         } else {
+            storage.remove("forcePlayMode_" + itemId);
+         }
+      }
+   }
+   
+   // Load persisted play mode on init
+   function loadForcePlayMode() {
+      if (typeof storage !== "undefined") {
+         forcePlayMode = storage.get("forcePlayMode_" + itemId, false) || null;
+         if (forcePlayMode) {
+            console.log("[Player] Loaded persisted play mode:", forcePlayMode);
+         }
+      }
+   }
+   
+   // Save play mode to persist across reloads
+   function saveForcePlayMode(mode) {
+      if (typeof storage !== "undefined") {
+         if (mode) {
+            storage.set("forcePlayMode_" + itemId, mode, false);
+            console.log("[Player] Saved play mode to storage:", mode);
+         } else {
+            storage.remove("forcePlayMode_" + itemId);
+         }
+      }
+   }
    const PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
    let bitrateUpdateInterval = null;
 
@@ -172,6 +216,8 @@ var PlayerController = (function () {
          );
          return;
       }
+      
+      loadForcePlayMode();
 
       cacheElements();
       setupEventListeners();
@@ -2323,6 +2369,8 @@ var PlayerController = (function () {
             clearTimeout(playbackHealthCheckTimer);
             playbackHealthCheckTimer = null;
          }
+         
+         saveForcePlayMode(null);
 
          if (playerAdapter) {
             playerAdapter.destroy().catch(function (err) {});
@@ -3546,9 +3594,28 @@ var PlayerController = (function () {
    }
 
    function setPlayMode(mode) {
+      if (forcePlayMode === mode) {
+         closeModal();
+         return;
+      }
+      
       forcePlayMode = mode;
-      hideControls();
+      saveForcePlayMode(mode);
+      console.log("[Player] Playback mode changed to:", mode, "- reloading video");
+      
+      var currentPos = videoPlayer ? Math.floor(videoPlayer.currentTime) : 0;
+      
+      if (videoPlayer) {
+         reportPlaybackStop();
+         stopProgressReporting();
+         stopBitrateMonitoring();
+      }
+      
       closeModal();
+      
+      var params = new URLSearchParams(window.location.search);
+      params.set('position', currentPos);
+      window.location.search = params.toString();
    }
 
    /**
