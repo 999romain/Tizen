@@ -3172,7 +3172,7 @@ var BrowseController = (function () {
    function handleItemClick(item) {
       // Live TV Support: Handle Live TV channel playback
       if (item.Type === "TvChannel") {
-         var url = "player.html?id=" + item.Id + "&mediaType=livetv";
+         var url = "player-web.html?id=" + item.Id + "&mediaType=livetv";
          if (item.MultiServerId) {
             url += "&serverId=" + item.MultiServerId;
          }
@@ -3182,7 +3182,7 @@ var BrowseController = (function () {
 
       // Live TV Support: Handle recording playback
       if (item.Type === "Recording") {
-         var url = "player.html?id=" + item.Id + "&mediaType=recording";
+         var url = "player-web.html?id=" + item.Id + "&mediaType=recording";
          if (item.MultiServerId) {
             url += "&serverId=" + item.MultiServerId;
          }

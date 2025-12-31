@@ -1820,7 +1820,7 @@ var DetailsController = (function () {
                if (!err && data && data.Items && data.Items.length > 0) {
                   // Play the next episode
                   var nextEpisode = data.Items[0];
-                  var playUrl = "player.html?id=" + nextEpisode.Id;
+                  var playUrl = "player-web.html?id=" + nextEpisode.Id;
                   if (serverId) playUrl += "&serverId=" + serverId;
                   window.location.href = playUrl;
                } else {
@@ -1834,7 +1834,7 @@ var DetailsController = (function () {
 
       // For all other types, play directly
       // If there's a saved position, add position=0 to start from beginning
-      var url = "player.html?id=" + itemData.Id;
+      var url = "player-web.html?id=" + itemData.Id;
       if (itemData.UserData && itemData.UserData.PlaybackPositionTicks > 0) {
          url += "&position=0";
       }
@@ -1843,7 +1843,7 @@ var DetailsController = (function () {
    }
 
    function handleResume() {
-      var url = "player.html?id=" + itemData.Id;
+      var url = "player-web.html?id=" + itemData.Id;
       if (serverId) url += "&serverId=" + serverId;
       window.location.href = url;
    }

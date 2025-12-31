@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+   <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Moonfin - Player</title>
+      <script src="js/polyfills.js" charset="utf-8"></script>
+      <script src="js/storage.js" charset="utf-8"></script>
+      <script src="js/jellyfin-api.js" charset="utf-8"></script>
+      <script src="js/multi-server.js" charset="utf-8"></script>
+      <style>
+         * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+         }
+         
+         html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+         }
+         
+         #jellyfinFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
+         }
+         
+         #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         }
+         
+         .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #00a4dc;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+         }
+         
+         .loading-text {
+            font-size: 20px;
+            margin-bottom: 10px;
+         }
+         
+         .loading-subtext {
+            font-size: 14px;
+            color: #888;
+         }
+         
+         @keyframes spin {
+            to { transform: rotate(360deg); }
+         }
+      </style>
+   </head>
+   <body>
+      <div id="loadingOverlay">
+         <div class="loading-spinner"></div>
+         <div class="loading-text">Loading Jellyfin Web Player...</div>
+         <div class="loading-subtext" id="loadingStatus">Initializing...</div>
+      </div>
+      <iframe id="jellyfinFrame" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe>
+      
+      <script>
+         (function() {
+            'use strict';
+            
+            var loadingStatus = document.getElementById('loadingStatus');
+            
+            function setStatus(msg) {
+               console.log('[Player-Web] ' + msg);
+               loadingStatus.textContent = msg;
+            }
+            
+            // Get auth for current server
+            var auth = typeof MultiServerManager !== 'undefined' 
+               ? MultiServerManager.getAuthForPage() 
+               : JellyfinAPI.getStoredAuth();
+            
+            if (!auth) {
+               setStatus('Error: Not logged in');
+               alert('Not logged in. Please log in first.');
+               window.history.back();
+               return;
+            }
+            
+            // Get parameters from URL
+            var params = new URLSearchParams(window.location.search);
+            var itemId = params.get('id');
+            var positionTicks = params.get('position') ? parseInt(params.get('position')) * 10000000 : 0;
+            var mediaType = params.get('mediaType') || 'video';
+            
+            if (!itemId) {
+               setStatus('Error: No item specified');
+               alert('No item specified for playback.');
+               window.history.back();
+               return;
+            }
+            
+            setStatus('Connecting to ' + auth.serverAddress);
+            
+            var serverAddress = auth.serverAddress;
+            var accessToken = auth.accessToken;
+            var userId = auth.userId;
+            
+            // Build jellyfin-web URL with embedded playback command
+            // We'll load jellyfin-web and use its API to start playback
+            // The URL includes the access token for authentication
+            var webUrl = serverAddress + '/web/index.html';
+            
+            var iframe = document.getElementById('jellyfinFrame');
+            var loadingOverlay = document.getElementById('loadingOverlay');
+            
+            // Track if playback was triggered
+            var playbackTriggered = false;
+            
+            // Handle iframe load
+            iframe.onload = function() {
+               setStatus('Jellyfin Web loaded, starting playback...');
+               
+               // Give jellyfin-web time to initialize
+               setTimeout(function() {
+                  triggerPlayback();
+               }, 2000);
+            };
+            
+            iframe.onerror = function(err) {
+               setStatus('Error: Failed to load player');
+               console.error('[Player-Web] Iframe load error:', err);
+            };
+            
+            // Try to trigger playback through the iframe
+            function triggerPlayback() {
+               if (playbackTriggered) return;
+               
+               try {
+                  var iframeWindow = iframe.contentWindow;
+                  
+                  // Try to access jellyfin-web's playbackManager
+                  // This will only work if same-origin
+                  if (iframeWindow.require) {
+                     // jellyfin-web uses require for modules
+                     setStatus('Attempting to start playback...');
+                     
+                     var playbackManager = iframeWindow.require('components/playback/playbackmanager').playbackManager;
+                     if (playbackManager) {
+                        playbackManager.play({
+                           ids: [itemId],
+                           startPositionTicks: positionTicks,
+                           serverId: auth.serverId || undefined
+                        }).then(function() {
+                           playbackTriggered = true;
+                           loadingOverlay.style.display = 'none';
+                           setStatus('Playing');
+                        }).catch(function(err) {
+                           console.error('[Player-Web] Playback error:', err);
+                           setStatus('Playback error: ' + err.message);
+                        });
+                        return;
+                     }
+                  }
+                  
+                  // Alternative: try to find playbackManager on window
+                  if (iframeWindow.playbackManager) {
+                     iframeWindow.playbackManager.play({
+                        ids: [itemId],
+                        startPositionTicks: positionTicks
+                     });
+                     playbackTriggered = true;
+                     loadingOverlay.style.display = 'none';
+                     return;
+                  }
+                  
+                  // If we can't access the API, just hide the overlay
+                  // User will need to interact with jellyfin-web directly
+                  console.log('[Player-Web] Could not access playbackManager, showing jellyfin-web');
+                  loadingOverlay.style.display = 'none';
+                  
+               } catch (e) {
+                  // Cross-origin restriction - expected for different origins
+                  console.log('[Player-Web] Cross-origin restriction:', e.message);
+                  setStatus('Loaded (cross-origin mode)');
+                  
+                  // Hide overlay and let user interact with jellyfin-web
+                  setTimeout(function() {
+                     loadingOverlay.style.display = 'none';
+                  }, 1000);
+               }
+            }
+            
+            // Handle back button to exit player
+            document.addEventListener('keydown', function(evt) {
+               // Tizen back button (10009), XF86Back (461), Escape (27), Backspace (8)
+               if (evt.keyCode === 10009 || evt.keyCode === 461 || evt.keyCode === 27 || evt.keyCode === 8) {
+                  evt.preventDefault();
+                  evt.stopPropagation();
+                  
+                  // Try to stop playback in iframe first
+                  try {
+                     var iframeWindow = iframe.contentWindow;
+                     if (iframeWindow.playbackManager) {
+                        iframeWindow.playbackManager.stop();
+                     }
+                  } catch (e) {
+                     // Ignore cross-origin errors
+                  }
+                  
+                  window.history.back();
+               }
+            });
+            
+            // Load jellyfin-web with play action
+            // Format: /web/index.html#!/item?id=xxx&serverId=xxx will show details
+            // We append api_key for authentication and go to details page
+            // Then jellyfin-web should handle playback when we trigger it
+            var playUrl = webUrl + '?api_key=' + encodeURIComponent(accessToken) + 
+                          '#!/item?id=' + itemId + '&serverId=' + (auth.serverId || '');
+            
+            console.log('[Player-Web] Loading URL:', playUrl.substring(0, 100) + '...');
+            iframe.src = playUrl;
+            
+         })();
+      </script>
+   </body>
+</html>

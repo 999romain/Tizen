@@ -35,12 +35,10 @@ var PlayerController = (function () {
    let isSeeking = false;
    let isSeekingActive = false; // True while user is actively seeking (before debounce completes)
    let pendingSeekPosition = null;
-   let hasTriedTranscode = false;
    let currentMediaSource = null;
    let isTranscoding = false;
    let currentPlaybackSpeed = 1.0;
    let isDolbyVisionMedia = false; // Track if current media is Dolby Vision
-   let willUseDirectPlay = false; // Track if we plan to use direct play before loading
    let playbackHealthCheckTimer = null; // Timer for checking playback health
    let forcePlayMode = null; // User override for playback mode ('direct' or 'transcode')
    
@@ -57,28 +55,6 @@ var PlayerController = (function () {
    // Save play mode to persist across reloads
    function saveForcePlayMode(mode) {
       if (typeof storage !== "undefined" && itemId) {
-         if (mode) {
-            storage.set("forcePlayMode_" + itemId, mode, false);
-            console.log("[Player] Saved play mode to storage:", mode);
-         } else {
-            storage.remove("forcePlayMode_" + itemId);
-         }
-      }
-   }
-   
-   // Load persisted play mode on init
-   function loadForcePlayMode() {
-      if (typeof storage !== "undefined") {
-         forcePlayMode = storage.get("forcePlayMode_" + itemId, false) || null;
-         if (forcePlayMode) {
-            console.log("[Player] Loaded persisted play mode:", forcePlayMode);
-         }
-      }
-   }
-   
-   // Save play mode to persist across reloads
-   function saveForcePlayMode(mode) {
-      if (typeof storage !== "undefined") {
          if (mode) {
             storage.set("forcePlayMode_" + itemId, mode, false);
             console.log("[Player] Saved play mode to storage:", mode);
@@ -122,48 +98,6 @@ var PlayerController = (function () {
 
    // Jellyfin Ticks Conversion
    const TICKS_PER_SECOND = 10000000;
-
-   /**
-    * Attempt fallback to transcoding if direct play fails
-    * @param {Object} mediaSource - Original media source
-    * @param {string} reason - Reason for fallback
-    * @returns {boolean} True if fallback attempted, false if not possible
-    */
-   function attemptTranscodeFallback(mediaSource, reason) {
-      if (hasTriedTranscode) {
-         return false;
-      }
-
-      if (!mediaSource || !mediaSource.SupportsTranscoding) {
-         return false;
-      }
-
-      hasTriedTranscode = true;
-      willUseDirectPlay = false;
-
-      if (typeof ServerLogger !== "undefined") {
-         ServerLogger.logPlaybackWarning("Falling back to transcoding", {
-            reason: reason,
-            itemId: itemId,
-            itemName: itemData ? itemData.Name : "Unknown",
-            mediaSource: mediaSource
-               ? {
-                    id: mediaSource.Id,
-                    container: mediaSource.Container,
-                    videoCodec: mediaSource.VideoCodecs,
-                    audioCodec: mediaSource.AudioCodecs,
-                 }
-               : null,
-         });
-      }
-
-      var modifiedSource = Object.assign({}, mediaSource);
-      modifiedSource.SupportsDirectPlay = false;
-
-      clearLoadingTimeout();
-      startPlayback(modifiedSource).catch(onError);
-      return true;
-   }
 
    /**
     * Clear loading timeout safely
@@ -1059,86 +993,20 @@ var PlayerController = (function () {
           videoStream.VideoRangeType === "HLG" ||
           videoStream.VideoRangeType === "DOVIWithHDR10");
 
-      // Build supported codecs list based on actual device capabilities
-      var safeVideoCodecs = ["h264", "avc"];
-      var safeAudioCodecs = ["aac", "mp3"];
-      var safeContainers = ["mp4"];
+      // Trust the server's decision based on our device profile
+      // The server already evaluated our capabilities via the device profile we sent
+      // This matches jellyfin-web behavior which trusts SupportsDirectPlay
+      var canDirectPlay = mediaSource.SupportsDirectPlay;
+      var canTranscode = mediaSource.SupportsTranscoding;
 
-      // Use BrowserDeviceProfile if available for accurate capability detection
-      if (typeof BrowserDeviceProfile !== "undefined") {
-         if (BrowserDeviceProfile.canPlayHevc()) {
-            safeVideoCodecs.push("hevc", "h265", "hev1", "hvc1");
-            // Only add DV codecs if we can play the HDR fallback
-            if (BrowserDeviceProfile.supportsHdr10()) {
-               safeVideoCodecs.push("dvhe", "dvh1");
-            }
-         }
-         if (BrowserDeviceProfile.canPlayAv1()) {
-            safeVideoCodecs.push("av1");
-         }
-         if (BrowserDeviceProfile.canPlayMkv()) {
-            safeContainers.push("mkv");
-         }
-         if (BrowserDeviceProfile.isTizen()) {
-            safeContainers.push("ts", "mpegts");
-            safeAudioCodecs.push("ac3", "eac3", "pcm_s16le", "pcm_s24le");
-            // DTS not supported on Tizen 4.0+
-            if (BrowserDeviceProfile.getTizenVersion() < 4) {
-               safeAudioCodecs.push("dts", "dca");
-            }
-         }
-      } else {
-         // Fallback to basic assumptions
-         safeVideoCodecs.push("hevc", "h265", "hev1", "hvc1", "dvhe", "dvh1");
-         safeAudioCodecs.push("ac3", "eac3", "dts", "truehd", "flac");
-         safeContainers.push("mkv");
-      }
-
-      console.log("[Player] Codec support check:", {
+      console.log("[Player] Server playback capabilities:", {
          container: mediaSource.Container,
          videoCodec: videoStream ? videoStream.Codec : "none",
          audioCodec: audioStream ? audioStream.Codec : "none",
-         safeContainers: safeContainers,
-         safeVideoCodecs: safeVideoCodecs,
-         safeAudioCodecs: safeAudioCodecs
+         supportsDirectPlay: mediaSource.SupportsDirectPlay,
+         supportsDirectStream: mediaSource.SupportsDirectStream,
+         supportsTranscoding: mediaSource.SupportsTranscoding
       });
-
-      var canDirectPlay =
-         mediaSource.SupportsDirectPlay &&
-         mediaSource.Container &&
-         safeContainers.indexOf(mediaSource.Container.toLowerCase()) !== -1 &&
-         videoStream &&
-         videoStream.Codec &&
-         safeVideoCodecs.indexOf(videoStream.Codec.toLowerCase()) !== -1 &&
-         audioStream &&
-         audioStream.Codec &&
-         safeAudioCodecs.indexOf(audioStream.Codec.toLowerCase()) !== -1;
-
-      // Log why direct play might not be possible
-      if (!canDirectPlay && mediaSource.SupportsDirectPlay) {
-         var reason = [];
-         if (!mediaSource.Container || safeContainers.indexOf(mediaSource.Container.toLowerCase()) === -1) {
-            reason.push("Container '" + (mediaSource.Container || "unknown") + "' not in safe list");
-         }
-         if (!videoStream || !videoStream.Codec || safeVideoCodecs.indexOf(videoStream.Codec.toLowerCase()) === -1) {
-            reason.push("Video codec '" + (videoStream ? videoStream.Codec : "none") + "' not in safe list");
-         }
-         if (!audioStream || !audioStream.Codec || safeAudioCodecs.indexOf(audioStream.Codec.toLowerCase()) === -1) {
-            reason.push("Audio codec '" + (audioStream ? audioStream.Codec : "none") + "' not in safe list");
-         }
-         console.log("[Player] Direct play not possible despite server support:", reason.join(", "));
-         
-         if (typeof ServerLogger !== "undefined") {
-            ServerLogger.logPlaybackInfo("Direct play rejected by client", {
-               container: mediaSource.Container,
-               videoCodec: videoStream ? videoStream.Codec : "none",
-               audioCodec: audioStream ? audioStream.Codec : "none",
-               reasons: reason
-            });
-         }
-      }
-
-      var canTranscode = mediaSource.SupportsTranscoding;
 
       var shouldUseDirectPlay = false;
       if (forcePlayMode === "direct") {
@@ -1148,41 +1016,21 @@ var PlayerController = (function () {
          shouldUseDirectPlay = false;
          console.log("[Player] Force transcode mode selected");
       } else {
-         // Default behavior: trust the server's decision
-         // If the server says we can direct play based on our device profile, trust it
-         // The device profile already specifies HEVC Main 10, HDR10/HDR10+/HLG support
+         // Default: trust the server's decision (same as jellyfin-web)
+         // The server already validated our device profile capabilities
          shouldUseDirectPlay = canDirectPlay;
          
-         if (canDirectPlay && (isHEVC10bit || isDolbyVision)) {
-            console.log("[Player] HEVC 10-bit or Dolby Vision detected - trusting device profile");
-            
-            // Log the decision for debugging
-            if (typeof ServerLogger !== "undefined") {
-               ServerLogger.logPlaybackInfo("HEVC 10-bit/DV content - using direct play", {
-                  isHEVC10bit: isHEVC10bit,
-                  isDolbyVision: isDolbyVision,
-                  isHDR: isHDR,
-                  bitDepth: videoStream ? videoStream.BitDepth : "unknown",
-                  profile: videoStream ? videoStream.Profile : "unknown",
-                  codec: videoStream ? videoStream.Codec : "unknown",
-                  videoRangeType: videoStream ? videoStream.VideoRangeType : "unknown",
-                  canDirectPlay: canDirectPlay,
-                  canTranscode: canTranscode
-               });
-            }
+         if (canDirectPlay) {
+            console.log("[Player] Server approved direct play - trusting server decision");
          }
       }
       
       // Log the playback decision
       console.log("[Player] Playback decision:", {
-         canDirectPlay: canDirectPlay,
-         canTranscode: canTranscode,
-         shouldUseDirectPlay: shouldUseDirectPlay,
-         isHEVC10bit: isHEVC10bit,
-         isDolbyVision: isDolbyVision,
+         method: shouldUseDirectPlay ? "DirectPlay" : (canTranscode ? "Transcode" : "None"),
          videoCodec: videoStream ? videoStream.Codec : "none",
-         bitDepth: videoStream ? videoStream.BitDepth : "unknown",
-         profile: videoStream ? videoStream.Profile : "unknown"
+         audioCodec: audioStream ? audioStream.Codec : "none",
+         container: mediaSource.Container
       });
 
       // Check if media source has a pre-configured transcoding URL (for Live TV)
@@ -1209,7 +1057,6 @@ var PlayerController = (function () {
          mimeType = "application/x-mpegURL";
          isTranscoding = true;
       } else if (shouldUseDirectPlay) {
-         willUseDirectPlay = true;
          streamUrl = auth.serverAddress + "/Videos/" + itemId + "/stream";
          params.append("Static", "true");
          var container = mediaSource.Container || "mp4";
@@ -1299,11 +1146,6 @@ var PlayerController = (function () {
          "[Player] Video Codec:",
          videoStream ? videoStream.Codec : "none"
       );
-      if (isDolbyVision || isHEVC10bit) {
-         console.log(
-            "[Player] Note: For best Dolby Vision/HDR10 support, transcoding to HLS is recommended"
-         );
-      }
       console.log("[Player] URL:", videoUrl.substring(0, 100) + "...");
 
       var startPosition = 0;
@@ -1403,34 +1245,23 @@ var PlayerController = (function () {
             
             playbackHealthCheckTimer = null;
             
-            // Final check: if playback never started after all attempts, force fallback (only for direct play)
-            // For transcoding, this indicates a different issue that needs user attention
+            // Final check: if playback never started after all attempts
             if (!playbackEverStarted && videoPlayer.currentTime === 0) {
                console.log("[Player] Playback never started after " + checkCount + " health checks");
+               console.error("[Player] Video element state:", {
+                  paused: videoPlayer.paused,
+                  currentTime: videoPlayer.currentTime,
+                  readyState: videoPlayer.readyState,
+                  networkState: videoPlayer.networkState,
+                  error: videoPlayer.error ? videoPlayer.error.message : "none"
+               });
                
-               if (isDirectPlay) {
-                  console.log("[Player] Direct play failed, attempting transcode fallback");
-                  if (attemptTranscodeFallback(mediaSource, "Playback never started - possible codec issue")) {
-                     console.log("[Player] Falling back to HLS transcoding due to stuck playback");
-                  }
-               } else {
-                  console.error("[Player] Transcoding also failed to start playback - likely a playback issue");
-                  // Log detailed state for debugging
-                  console.error("[Player] Video element state:", {
-                     paused: videoPlayer.paused,
-                     currentTime: videoPlayer.currentTime,
-                     readyState: videoPlayer.readyState,
-                     networkState: videoPlayer.networkState,
-                     error: videoPlayer.error ? videoPlayer.error.message : "none"
+               // Try one more play() call as last resort
+               if (videoPlayer.paused) {
+                  console.log("[Player] Attempting final play() call...");
+                  videoPlayer.play().catch(function(err) {
+                     console.error("[Player] Final play() attempt failed:", err);
                   });
-                  
-                  // Try one more play() call as last resort
-                  if (videoPlayer.paused) {
-                     console.log("[Player] Attempting final play() call...");
-                     videoPlayer.play().catch(function(err) {
-                        console.error("[Player] Final play() attempt failed:", err);
-                     });
-                  }
                }
             }
             return;
@@ -1517,26 +1348,16 @@ var PlayerController = (function () {
 
             playbackHealthCheckTimer = null;
             
-            // For direct play, attempt transcode fallback
-            // For transcoding, this is a more serious issue
-            if (isDirectPlay && 
-                attemptTranscodeFallback(
-                   mediaSource,
-                   "Playback health check failed"
-                )
-            ) {
-               console.log(
-                  "[Player] Falling back to HLS transcoding due to playback issues"
-               );
-            } else if (!isDirectPlay) {
-               // Transcoding itself is having issues, try to force play as last resort
-               console.error("[Player] Transcoding playback health check failed");
-               if (videoPlayer.paused) {
-                  console.log("[Player] Attempting to restart playback...");
-                  videoPlayer.play().catch(function(err) {
-                     console.error("[Player] Failed to restart playback:", err);
-                  });
-               }
+            // Log the issue but DON'T automatically switch to transcoding
+            // This matches jellyfin-web behavior - let the user decide via play mode button
+            console.error("[Player] Playback issue detected - video may not be playing");
+            
+            // Try one more play() call as last resort
+            if (videoPlayer.paused) {
+               console.log("[Player] Attempting to restart playback...");
+               videoPlayer.play().catch(function(err) {
+                  console.error("[Player] Failed to restart playback:", err);
+               });
             }
          } else {
             lastTime = currentTime;
@@ -1556,19 +1377,13 @@ var PlayerController = (function () {
     */
    function handlePlaybackLoadError(error, mediaSource, isDirectPlay) {
       clearLoadingTimeout();
-      console.log("[Player] Playback load failed:", error.message);
+      console.error("[Player] Playback load failed:", error.message);
 
-      if (
-         isDirectPlay &&
-         mediaSource &&
-         attemptTranscodeFallback(mediaSource, error.message || "Load error")
-      ) {
-         alert("Direct playback failed. Switching to transcoding...");
-      } else {
-         setLoadingState(LoadingState.ERROR);
-         alert("Failed to start playback: " + (error.message || error));
-         window.history.back();
-      }
+      // Show error to user - don't auto-fallback like jellyfin-web
+      // User can manually switch play mode if needed
+      setLoadingState(LoadingState.ERROR);
+      alert("Failed to start playback: " + (error.message || error));
+      window.history.back();
    }
 
    /**
@@ -1625,31 +1440,20 @@ var PlayerController = (function () {
                   elapsedSeconds +
                   "s (no buffering progress)"
             );
-            if (
-               mediaSource &&
-               attemptTranscodeFallback(mediaSource, "No buffering progress")
-            ) {
-               alert(
-                  "Direct playback not responding. Switching to transcoding..."
-               );
-            }
+            setLoadingState(LoadingState.ERROR);
+            alert("Direct playback timed out. Try using the Play Mode option to switch playback methods.");
          } else {
             // Buffering started but canplay didn't fire - give it more time
             console.log(
                "[Player] Direct play buffering but not ready. Extending timeout..."
             );
             var extendedTimeout = setTimeout(function () {
-               if (loadingState === LoadingState.LOADING && mediaSource) {
+               if (loadingState === LoadingState.LOADING) {
                   console.log(
-                     "[Player] Extended timeout reached, switching to transcoding"
+                     "[Player] Extended timeout reached"
                   );
-                  if (
-                     attemptTranscodeFallback(mediaSource, "Extended timeout")
-                  ) {
-                     alert(
-                        "Direct playback too slow. Switching to transcoding..."
-                     );
-                  }
+                  setLoadingState(LoadingState.ERROR);
+                  alert("Direct playback too slow. Try using the Play Mode option to switch playback methods.");
                }
             }, 10000); // Additional 10 seconds if buffering detected
 
@@ -2369,31 +2173,11 @@ var PlayerController = (function () {
       clearLoadingTimeout();
       setLoadingState(LoadingState.ERROR);
 
-      if (
-         currentMediaSource &&
-         currentMediaSource.SupportsDirectPlay &&
-         attemptTranscodeFallback(
-            currentMediaSource,
-            "Playback error: " + errorCode
-         )
-      ) {
-         alert(
-            "Direct playback error (code: " +
-               errorCode +
-               "). Switching to transcoding..."
-         );
-         return;
-      }
-
-      alert("Playback error occurred (code: " + errorCode + ")");
+      // Show error - don't auto-fallback (like jellyfin-web)
+      // User can manually switch play mode if needed
+      alert("Playback error occurred (code: " + errorCode + "). Try using the Play Mode option to switch playback methods.");
    }
 
-   /**
-    * Exit player and clean up resources
-    */
-   /**
-    * Exit player and clean up resources
-    */
    /**
     * Play previous item in queue/playlist
     */
@@ -4125,7 +3909,7 @@ var PlayerController = (function () {
 
       // Update browser history so BACK goes to correct details page
       if (window && window.history && window.location) {
-         var newUrl = "player.html?id=" + nextEpisodeId;
+         var newUrl = "player-web.html?id=" + nextEpisodeId;
          window.history.replaceState({}, "", newUrl);
       }
       // Load and play the next episode (keep playerAdapter alive)

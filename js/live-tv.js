@@ -1221,7 +1221,7 @@
     function handleWatchProgram() {
         const channelId = document.getElementById('popupWatchBtn').dataset.channelId;
         if (channelId) {
-            window.location.href = 'player.html?id=' + channelId + '&mediaType=livetv';
+            window.location.href = 'player-web.html?id=' + channelId + '&mediaType=livetv';
         }
     }
     
