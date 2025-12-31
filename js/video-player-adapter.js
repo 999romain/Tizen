@@ -715,8 +715,33 @@ class TizenVideoAdapter extends VideoPlayerAdapter {
             // Open new media
             webapis.avplay.open(url);
             
+            // Get actual screen resolution from Tizen TV API
+            let screenWidth = window.innerWidth;
+            let screenHeight = window.innerHeight;
+            
+            try {
+                if (typeof webapis !== 'undefined' && webapis.productinfo) {
+                    const resolution = webapis.productinfo.getResolution();
+                    if (resolution) {
+                        screenWidth = resolution.width || screenWidth;
+                        screenHeight = resolution.height || screenHeight;
+                        console.log('[TizenAdapter] Using TV resolution:', screenWidth + 'x' + screenHeight);
+                    }
+                }
+            } catch (e) {
+                console.log('[TizenAdapter] Could not get TV resolution, using window size:', screenWidth + 'x' + screenHeight);
+            }
+            
             // Set display area to full screen
-            webapis.avplay.setDisplayRect(0, 0, window.innerWidth, window.innerHeight);
+            webapis.avplay.setDisplayRect(0, 0, screenWidth, screenHeight);
+            
+            // Set display mode to stretch/fill
+            try {
+                webapis.avplay.setDisplayMethod('PLAYER_DISPLAY_MODE_FULL_SCREEN');
+                console.log('[TizenAdapter] Set display mode to full screen');
+            } catch (e) {
+                console.warn('[TizenAdapter] Could not set display method:', e);
+            }
 
             // Configure listener
             const listener = {
@@ -804,11 +829,21 @@ class TizenVideoAdapter extends VideoPlayerAdapter {
     prepareAsync() {
         return new Promise((resolve, reject) => {
             try {
+                console.log('[TizenAdapter] Starting prepareAsync...');
                 webapis.avplay.prepareAsync(
                     () => {
                         this.isPrepared = true;
                         this.duration = webapis.avplay.getDuration() / 1000;
-                        console.log('[TizenAdapter] Prepared, duration:', this.duration);
+                        
+                        // Log AVPlay state for debugging
+                        let state = 'UNKNOWN';
+                        try {
+                            state = webapis.avplay.getState();
+                        } catch (e) {}
+                        
+                        console.log('[TizenAdapter] Prepared successfully');
+                        console.log('[TizenAdapter] Duration:', this.duration, 'seconds');
+                        console.log('[TizenAdapter] State:', state);
                         
                         // Update video element duration for UI compatibility
                         if (this.videoElement) {
@@ -834,7 +869,17 @@ class TizenVideoAdapter extends VideoPlayerAdapter {
 
     play() {
         try {
+            console.log('[TizenAdapter] Calling play()');
             webapis.avplay.play();
+            
+            // Log state after play
+            setTimeout(() => {
+                try {
+                    const state = webapis.avplay.getState();
+                    console.log('[TizenAdapter] State after play():', state);
+                } catch (e) {}
+            }, 100);
+            
             return Promise.resolve();
         } catch (error) {
             console.error('[TizenAdapter] Play error:', error);
