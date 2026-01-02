@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="http://moonfin.org/Moonfin" version="1.1.0" viewmodes="maximized">
+<widget xmlns:tizen="http://tizen.org/ns/widgets" xmlns="http://www.w3.org/ns/widgets" id="http://jellyfin.org/jellyfin" version="1.1.1-beta-7" viewmodes="maximized">
     <access origin="*" subdomains="true"></access>
     <tizen:application id="MoonfinApp.Moonfin" package="MoonfinApp" required_version="2.3"/>
-    <author href="http://moonfin.org" email="apps@moonfin.org">Moonfin</author>
+    <author>Moonfin</author>
     <content src="browse.html"/>
     <description>Moonfin - A Jellyfin client for Samsung Smart TV (Tizen).</description>
     <feature name="http://tizen.org/feature/screen.size.all"/>

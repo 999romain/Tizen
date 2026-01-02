@@ -22,6 +22,21 @@ function updateVersion(cb) {
    const versionContent = `var APP_VERSION = '${version}';\n`;
    writeFileSync("./js/app-version.js", versionContent);
    console.info(`Updated app-version.js to version ${version}`);
+   
+   // Update config.xml version
+   try {
+      const configPath = "./config.xml";
+      let configXml = readFileSync(configPath, "utf8");
+      configXml = configXml.replace(
+         /(<widget[^>]+version=\")[^\"]+(\")/, 
+         `$1${version}$2`
+      );
+      writeFileSync(configPath, configXml);
+      console.info(`Updated config.xml to version ${version}`);
+   } catch (e) {
+      console.warn("Warning: Failed to update config.xml:", e.message);
+   }
+   
    cb();
 }
 

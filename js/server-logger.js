@@ -38,8 +38,8 @@ var ServerLogger = (function () {
 
       loadSettings();
 
-      if (typeof AppVersion !== "undefined" && AppVersion.version) {
-         appVersion = AppVersion.version;
+      if (typeof APP_VERSION !== "undefined") {
+         appVersion = APP_VERSION;
       }
 
       deviceInfo = getDeviceInfo();

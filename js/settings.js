@@ -1473,7 +1473,7 @@ var SettingsController = (function () {
                ServerLogger.logAppInfo("Test log from Moonfin settings", {
                   test: true,
                   timestamp: new Date().toISOString(),
-                  appVersion: "1.1.1",
+                  appVersion: typeof APP_VERSION !== "undefined" ? APP_VERSION : "unknown",
                   serverAddress: testAuth.serverAddress
                });
                showAlert(

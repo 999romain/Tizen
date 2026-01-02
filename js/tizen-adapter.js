@@ -294,7 +294,7 @@
       
       // Build video codec list based on Tizen version
       var mp4VideoCodecs = 'h264,hevc';
-      var mkvVideoCodecs = 'h264,hevc';
+      var mkvVideoCodecs = 'h264'; // HEVC excluded - causes playback issues in MKV containers
       if (tizenVersion >= 5.5) {
          // AV1 only supported on Tizen 5.5+ (2020 TVs)
          mp4VideoCodecs += ',av1';
@@ -406,22 +406,7 @@
             { Container: 'wav', Type: 'Audio', AudioCodec: 'wav', Context: 'Static', Protocol: 'http', MaxAudioChannels: '6' }
          ],
          
-         ContainerProfiles: [
-            // MKV with HEVC causes direct play issues on Tizen (audio only, no video)
-            // Force transcoding by not supporting it
-            {
-               Type: 'Video',
-               Container: 'mkv',
-               Conditions: [
-                  {
-                     Condition: 'NotEquals',
-                     Property: 'VideoCodec',
-                     Value: 'hevc',
-                     IsRequired: false
-                  }
-               ]
-            }
-         ].concat(tizenVersion < 6.5 ? [
+         ContainerProfiles: [].concat(tizenVersion < 6.5 ? [
             // Tizen <6.5 doesn't support more than 32 streams in a single file
             {
                Type: 'Video',
