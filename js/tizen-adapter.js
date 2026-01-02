@@ -372,11 +372,12 @@
          
          TranscodingProfiles: [
             // HLS video transcoding - fMP4 (Tizen 5+)
+            // H.264 first for maximum compatibility
             {
                Container: 'mp4',
                Type: 'Video',
                AudioCodec: 'aac,mp3,ac3,eac3,opus',
-               VideoCodec: 'h264,hevc',
+               VideoCodec: 'h264',
                Context: 'Streaming',
                Protocol: 'hls',
                MaxAudioChannels: '6',
@@ -388,7 +389,7 @@
                Container: 'ts',
                Type: 'Video',
                AudioCodec: 'aac,mp3,ac3,eac3,opus',
-               VideoCodec: 'h264,hevc',
+               VideoCodec: 'h264',
                Context: 'Streaming',
                Protocol: 'hls',
                MaxAudioChannels: '6',
