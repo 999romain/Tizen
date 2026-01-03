@@ -209,6 +209,8 @@ var LibraryController = {
                 params.IncludeItemTypes = 'Movie';
                 params.ParentId = self.libraryId;
                 params.Recursive = true;
+                // Include movies that are in collections (BoxSets)
+                params.CollapseBoxSetItems = false;
             } else if (library && library.CollectionType === 'music') {
                 // For music, check what we're filtering for
                 if (self.filters.itemType === 'Artist') {
