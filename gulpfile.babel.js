@@ -48,6 +48,7 @@ function copyFiles() {
             "*.xml",
             "shaka-player.js",
             "hls.js",
+            "tizen-jellyfin-web.js",
             "css/**/*",
             "js/**/*",
             "assets/**/*",
@@ -67,6 +68,7 @@ function copyFilesES5() {
             "*.xml",
             "shaka-player.js",
             "hls.js",
+            "tizen-jellyfin-web.js",
             "css/**/*",
             "assets/**/*",
             "components/**/*",
@@ -76,8 +78,20 @@ function copyFilesES5() {
       .pipe(gulp.dest("build/"));
 
    return gulp
-      .src("js/**/*.js", { base: "." })
-      .pipe(babel())
+      .src(["js/**/*"], { base: ".", encoding: false })
+      .pipe(babel({
+         presets: [
+            [
+               "@babel/preset-env",
+               {
+                  targets: {
+                     chrome: "38"
+                  },
+                  modules: false
+               },
+            ],
+         ],
+      }))
       .pipe(gulp.dest("build/"));
 }
 
