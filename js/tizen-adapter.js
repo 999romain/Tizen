@@ -248,6 +248,255 @@
       return platformInfo;
    }
 
+   /**
+    * Get comprehensive device profile for Tizen TVs
+    * This profile defines what codecs/formats the TV can play directly
+    * @returns {Object} Device profile for Jellyfin PlaybackInfo API
+    */
+   function getTizenDeviceProfile() {
+      // Base max video dimensions
+      var maxVideoWidth = 3840;
+      var maxVideoHeight = 2160;
+
+      // Check for 8K support
+      try {
+         if (typeof webapis !== 'undefined' && webapis.productinfo) {
+            if (typeof webapis.productinfo.is8KPanelSupported === 'function' &&
+                webapis.productinfo.is8KPanelSupported()) {
+               maxVideoWidth = 7680;
+               maxVideoHeight = 4320;
+            }
+         }
+      } catch (e) {
+         console.log('[Tizen] Could not check 8K support:', e);
+      }
+
+      return {
+         MaxStreamingBitrate: 120000000,
+         MaxStaticBitrate: 100000000,
+         MusicStreamingTranscodingBitrate: 384000,
+         DirectPlayProfiles: [
+            // Video profiles - MKV container
+            {
+               Container: 'mkv,webm',
+               Type: 'Video',
+               VideoCodec: 'h264,hevc,vp8,vp9,av1',
+               AudioCodec: 'aac,ac3,eac3,mp3,opus,flac,vorbis,pcm,truehd,dts'
+            },
+            // Video profiles - MP4 container
+            {
+               Container: 'mp4,m4v',
+               Type: 'Video',
+               VideoCodec: 'h264,hevc,vp9,av1',
+               AudioCodec: 'aac,ac3,eac3,mp3,opus,flac,alac'
+            },
+            // Video profiles - TS/M2TS container (broadcast/Blu-ray)
+            {
+               Container: 'ts,m2ts,mpegts',
+               Type: 'Video',
+               VideoCodec: 'h264,hevc,mpeg2video',
+               AudioCodec: 'aac,ac3,eac3,mp3,dts,truehd,pcm'
+            },
+            // Video profiles - AVI container
+            {
+               Container: 'avi',
+               Type: 'Video',
+               VideoCodec: 'h264,mpeg4,msmpeg4v3,vc1',
+               AudioCodec: 'aac,ac3,mp3,pcm'
+            },
+            // Video profiles - MOV container
+            {
+               Container: 'mov',
+               Type: 'Video',
+               VideoCodec: 'h264,hevc',
+               AudioCodec: 'aac,ac3,eac3,alac,pcm'
+            },
+            // Audio profiles
+            {
+               Container: 'mp3',
+               Type: 'Audio'
+            },
+            {
+               Container: 'aac,m4a,m4b',
+               Type: 'Audio',
+               AudioCodec: 'aac'
+            },
+            {
+               Container: 'flac',
+               Type: 'Audio'
+            },
+            {
+               Container: 'wav',
+               Type: 'Audio'
+            },
+            {
+               Container: 'ogg',
+               Type: 'Audio',
+               AudioCodec: 'opus,vorbis'
+            }
+         ],
+         TranscodingProfiles: [
+            // Video transcoding - prefer TS for live
+            {
+               Container: 'ts',
+               Type: 'Video',
+               AudioCodec: 'aac,ac3,eac3,mp3',
+               VideoCodec: 'h264',
+               Context: 'Streaming',
+               Protocol: 'hls',
+               MaxAudioChannels: '6',
+               MinSegments: 2,
+               BreakOnNonKeyFrames: true
+            },
+            // Video transcoding - MP4 for VOD
+            {
+               Container: 'mp4',
+               Type: 'Video',
+               AudioCodec: 'aac,ac3,eac3',
+               VideoCodec: 'h264',
+               Context: 'Static',
+               Protocol: 'http'
+            },
+            // Audio transcoding
+            {
+               Container: 'mp3',
+               Type: 'Audio',
+               AudioCodec: 'mp3',
+               Context: 'Streaming',
+               Protocol: 'http',
+               MaxAudioChannels: '2'
+            },
+            {
+               Container: 'aac',
+               Type: 'Audio',
+               AudioCodec: 'aac',
+               Context: 'Streaming',
+               Protocol: 'http',
+               MaxAudioChannels: '6'
+            }
+         ],
+         ContainerProfiles: [],
+         CodecProfiles: [
+            // H.264 constraints
+            {
+               Type: 'Video',
+               Codec: 'h264',
+               Conditions: [
+                  {
+                     Condition: 'NotEquals',
+                     Property: 'IsAnamorphic',
+                     Value: 'true',
+                     IsRequired: false
+                  },
+                  {
+                     Condition: 'EqualsAny',
+                     Property: 'VideoProfile',
+                     Value: 'high|main|baseline|constrained baseline',
+                     IsRequired: false
+                  },
+                  {
+                     Condition: 'LessThanEqual',
+                     Property: 'VideoLevel',
+                     Value: '52',
+                     IsRequired: false
+                  },
+                  {
+                     Condition: 'LessThanEqual',
+                     Property: 'Width',
+                     Value: String(maxVideoWidth),
+                     IsRequired: false
+                  },
+                  {
+                     Condition: 'LessThanEqual',
+                     Property: 'Height',
+                     Value: String(maxVideoHeight),
+                     IsRequired: false
+                  }
+               ]
+            },
+            // HEVC constraints
+            {
+               Type: 'Video',
+               Codec: 'hevc',
+               Conditions: [
+                  {
+                     Condition: 'NotEquals',
+                     Property: 'IsAnamorphic',
+                     Value: 'true',
+                     IsRequired: false
+                  },
+                  {
+                     Condition: 'EqualsAny',
+                     Property: 'VideoProfile',
+                     Value: 'main|main 10',
+                     IsRequired: false
+                  },
+                  {
+                     Condition: 'LessThanEqual',
+                     Property: 'VideoLevel',
+                     Value: '183',
+                     IsRequired: false
+                  },
+                  {
+                     Condition: 'LessThanEqual',
+                     Property: 'Width',
+                     Value: String(maxVideoWidth),
+                     IsRequired: false
+                  },
+                  {
+                     Condition: 'LessThanEqual',
+                     Property: 'Height',
+                     Value: String(maxVideoHeight),
+                     IsRequired: false
+                  }
+               ]
+            },
+            // Audio bitrate limits
+            {
+               Type: 'VideoAudio',
+               Codec: 'aac',
+               Conditions: [
+                  {
+                     Condition: 'LessThanEqual',
+                     Property: 'AudioChannels',
+                     Value: '8',
+                     IsRequired: false
+                  }
+               ]
+            },
+            {
+               Type: 'VideoAudio',
+               Codec: 'ac3,eac3',
+               Conditions: [
+                  {
+                     Condition: 'LessThanEqual',
+                     Property: 'AudioChannels',
+                     Value: '8',
+                     IsRequired: false
+                  }
+               ]
+            }
+         ],
+         SubtitleProfiles: [
+            { Format: 'srt', Method: 'External' },
+            { Format: 'srt', Method: 'Embed' },
+            { Format: 'ass', Method: 'External' },
+            { Format: 'ass', Method: 'Embed' },
+            { Format: 'ssa', Method: 'External' },
+            { Format: 'ssa', Method: 'Embed' },
+            { Format: 'sub', Method: 'Embed' },
+            { Format: 'sub', Method: 'External' },
+            { Format: 'vtt', Method: 'External' },
+            { Format: 'vtt', Method: 'Embed' },
+            { Format: 'pgs', Method: 'Embed' },
+            { Format: 'pgssub', Method: 'Embed' },
+            { Format: 'dvdsub', Method: 'Embed' },
+            { Format: 'dvbsub', Method: 'Embed' }
+         ],
+         ResponseProfiles: []
+      };
+   }
+
    // Supported features list
    var SupportedFeatures = [
       'exit',
@@ -303,15 +552,8 @@
             return 'tv';
          },
 
-         /**
-          * Get device profile using jellyfin-web's built-in profileBuilder
-          * or generate one directly for custom implementations
-          * @param {Function} profileBuilder
-          * @returns {Object}
-          */
          getDeviceProfile: function (profileBuilder) {
             console.log('[Tizen] NativeShell.AppHost.getDeviceProfile called');
-            // For full parity: always delegate to jellyfin-web's runtime profile builder
             if (typeof profileBuilder === 'function') {
                return profileBuilder({
                   enableMkvProgressive: false,
@@ -319,8 +561,13 @@
                });
             }
 
-            console.warn('[Tizen] profileBuilder not provided; returning empty profile');
-            return {};
+            if (typeof window.JellyfinProfileBuilder === 'function') {
+               console.log('[Tizen] Using JellyfinProfileBuilder (extracted from jellyfin-web)');
+               return window.JellyfinProfileBuilder();
+            }
+
+            console.log('[Tizen] Using static Tizen device profile fallback');
+            return getTizenDeviceProfile();
          },
 
          getSyncProfile: function (profileBuilder) {
