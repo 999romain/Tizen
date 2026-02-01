@@ -7,6 +7,7 @@ import {SettingsProvider} from '../context/SettingsContext';
 import {JellyseerrProvider} from '../context/JellyseerrContext';
 import {useVersionCheck} from '../hooks/useVersionCheck';
 import UpdateNotification from '../components/UpdateNotification';
+import NavBar from '../components/NavBar';
 import {registerKeys, ESSENTIAL_KEY_NAMES, isBackKey, TIZEN_KEYS} from '../utils/tizenKeys';
 import Login from '../views/Login';
 import Browse from '../views/Browse';
@@ -28,6 +29,8 @@ import JellyseerrBrowse from '../views/JellyseerrBrowse';
 import JellyseerrPerson from '../views/JellyseerrPerson';
 
 import css from './App.module.less';
+
+const EXCLUDED_COLLECTION_TYPES = ['music', 'musicvideos', 'homevideos', 'photos'];
 
 const PANELS = {
 	LOGIN: 0,
@@ -53,7 +56,7 @@ const PANELS = {
 };
 
 const AppContent = (props) => {
-	const {isAuthenticated, isLoading, logout, serverUrl, serverName} = useAuth();
+	const {isAuthenticated, isLoading, logout, serverUrl, serverName, api} = useAuth();
 	const [panelIndex, setPanelIndex] = useState(PANELS.LOGIN);
 	const [selectedItem, setSelectedItem] = useState(null);
 	const [selectedLibrary, setSelectedLibrary] = useState(null);
@@ -66,11 +69,25 @@ const AppContent = (props) => {
 	const [jellyseerrBrowse, setJellyseerrBrowse] = useState(null);
 	const [jellyseerrPerson, setJellyseerrPerson] = useState(null);
 	const [authChecked, setAuthChecked] = useState(false);
+	const [libraries, setLibraries] = useState([]);
 
-	// Version check - only after authenticated
+	useEffect(() => {
+		const fetchLibraries = async () => {
+			if (isAuthenticated && api) {
+				try {
+					const result = await api.getLibraries();
+					const libs = result.Items || [];
+					const filtered = libs.filter(lib => !EXCLUDED_COLLECTION_TYPES.includes(lib.CollectionType?.toLowerCase()));
+					setLibraries(filtered);
+				} catch (err) {
+					console.error('Failed to fetch libraries:', err);
+				}
+			}
+		};
+		fetchLibraries();
+	}, [isAuthenticated, api]);
+
 	const {updateInfo, formattedNotes, dismiss: dismissUpdate} = useVersionCheck(isAuthenticated ? 3000 : null);
-
-	// Update panel when auth state is determined
 	useEffect(() => {
 		if (!isLoading && !authChecked) {
 			setAuthChecked(true);
@@ -109,24 +126,19 @@ const AppContent = (props) => {
 
 	useEffect(() => {
 		const handleKeyDown = (e) => {
-			// Allow backspace in input fields
 			if (e.keyCode === 8 && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
 				return;
 			}
 			// Handle back button (10009 = Tizen BACK, 27 = Escape, 8 = Backspace)
 			if (isBackKey(e)) {
-				// Always prevent default to stop TV from showing home menu
 				e.preventDefault();
 
-				// Don't navigate back from browse or login - already at root
 				if (panelIndex === PANELS.BROWSE || panelIndex === PANELS.LOGIN) {
 					return;
 				}
-				// Player and Settings handle their own back button - let event propagate to them
 				if (panelIndex === PANELS.PLAYER || panelIndex === PANELS.SETTINGS) {
 					return;
 				}
-				// For all other panels, stop propagation and handle navigation
 				e.stopPropagation();
 				handleBack();
 			}
@@ -145,6 +157,15 @@ const AppContent = (props) => {
 	const handleLoggedIn = useCallback(() => {
 		setPanelHistory([]);
 		navigateTo(PANELS.BROWSE, false);
+	}, [navigateTo]);
+
+	const navigateToLibrary = useCallback((library) => {
+		if (library.CollectionType === 'livetv') {
+			navigateTo(PANELS.LIVETV);
+			return;
+		}
+		setSelectedLibrary(library);
+		navigateTo(PANELS.LIBRARY);
 	}, [navigateTo]);
 
 	const handleSelectItem = useCallback((item) => {
@@ -427,6 +448,20 @@ const AppContent = (props) => {
 
 	return (
 		<div className={css.app} {...props}>
+			{isAuthenticated && panelIndex !== PANELS.PLAYER && panelIndex !== PANELS.LOGIN && (
+				<NavBar
+					onHome={() => navigateTo(PANELS.BROWSE, false)}
+					onSearch={handleOpenSearch}
+					onSettings={handleOpenSettings}
+					onFavorites={handleOpenFavorites}
+					onGenres={handleOpenGenres}
+					onShuffle={() => {}}
+					onJellyseerr={handleOpenJellyseerr}
+					onUserMenu={handleSwitchUser}
+					onSelectLibrary={navigateToLibrary}
+					libraries={libraries}
+				/>
+			)}
 			{renderView()}
 			<UpdateNotification
 				updateInfo={updateInfo}

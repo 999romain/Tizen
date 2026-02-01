@@ -70,7 +70,23 @@ const NavBar = ({
 		if (e.keyCode === 40) {
 			e.preventDefault();
 			e.stopPropagation();
-			Spotlight.focus('featured-banner');
+			const focusTargets = [
+				'featured-banner',
+				'settings-sidebar',
+				'favorites-row-0',
+				'details-primary-btn',
+				'genre-browse-grid',
+				'genres-grid',
+				'library-grid',
+				'jellyseerr-browse-grid',
+				'jellyseerr-discover-featured',
+				'search-input'
+			];
+			for (const target of focusTargets) {
+				if (Spotlight.focus(target)) {
+					break;
+				}
+			}
 		}
 	}, []);
 

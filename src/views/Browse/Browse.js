@@ -3,7 +3,6 @@ import Spottable from '@enact/spotlight/Spottable';
 import Spotlight from '@enact/spotlight';
 import {useAuth} from '../../context/AuthContext';
 import {useSettings} from '../../context/SettingsContext';
-import NavBar from '../../components/NavBar';
 import MediaRow from '../../components/MediaRow';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import {getImageUrl, getBackdropId, getLogoUrl} from '../../utils/helpers';
@@ -475,20 +474,6 @@ const Browse = ({
 				)}
 				<div className={css.globalBackdropOverlay} />
 			</div>
-
-			<NavBar
-				activeView="home"
-				libraries={libraries}
-				onHome={handleHome}
-				onSearch={onOpenSearch}
-				onShuffle={handleShuffle}
-				onGenres={onOpenGenres}
-				onFavorites={onOpenFavorites}
-				onDiscover={onOpenJellyseerr}
-				onSettings={onOpenSettings}
-				onSelectLibrary={handleSelectLibrary}
-				onUserMenu={onSwitchUser}
-			/>
 
 			<div className={css.mainContent} ref={mainContentRef}>
 				{currentFeatured && (
