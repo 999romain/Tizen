@@ -77,7 +77,7 @@ const NavBar = ({
 				'details-primary-btn',
 				'genre-browse-grid',
 				'genres-grid',
-				'library-grid',
+				'library-toolbar',
 				'jellyseerr-browse-grid',
 				'jellyseerr-discover-featured',
 				'search-input'

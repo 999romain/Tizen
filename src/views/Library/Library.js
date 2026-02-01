@@ -1,18 +1,21 @@
-import {useState, useEffect, useCallback, useRef} from 'react';
+import {useState, useEffect, useCallback, useRef, useMemo} from 'react';
 import Spottable from '@enact/spotlight/Spottable';
+import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDecorator';
 import Spotlight from '@enact/spotlight';
 import {VirtualGridList} from '@enact/sandstone/VirtualList';
 import Popup from '@enact/sandstone/Popup';
 import Button from '@enact/sandstone/Button';
 import {useAuth} from '../../context/AuthContext';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import {getImageUrl, getBackdropId, getPrimaryImageId} from '../../utils/helpers';
+import {getImageUrl, getPrimaryImageId} from '../../utils/helpers';
 import {isBackKey} from '../../utils/tizenKeys';
 
 import css from './Library.module.less';
 
 const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
+const ToolbarContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-first'}, 'div');
+const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
 
 const SORT_OPTIONS = [
 	{key: 'SortName,Ascending', label: 'Name (A-Z)'},
@@ -33,27 +36,37 @@ const FILTER_OPTIONS = [
 
 const LETTERS = ['#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 
-const BACKDROP_DEBOUNCE_MS = 500;
-
 const Library = ({library, onSelectItem, onBack}) => {
 	const {api, serverUrl} = useAuth();
 	const [allItems, setAllItems] = useState([]);
-	const [items, setItems] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [totalCount, setTotalCount] = useState(0);
 	const [sortBy, setSortBy] = useState('SortName,Ascending');
 	const [filter, setFilter] = useState('all');
 	const [startLetter, setStartLetter] = useState(null);
-	const [backdropUrl, setBackdropUrl] = useState('');
 	const [showSortModal, setShowSortModal] = useState(false);
 	const [showFilterModal, setShowFilterModal] = useState(false);
 
-	const backdropTimeoutRef = useRef(null);
-	const pendingBackdropUrlRef = useRef(null);
-	const backdropSetRef = useRef(false);
 	const loadingMoreRef = useRef(false);
-	const itemsRef = useRef([]);
 	const apiFetchIndexRef = useRef(0);
+	const initialFocusDoneRef = useRef(false);
+
+	const items = useMemo(() => {
+		if (!startLetter) {
+			return allItems;
+		}
+		return allItems.filter(item => {
+			const name = item.Name || '';
+			const firstChar = name.charAt(0).toUpperCase();
+			if (startLetter === '#') {
+				return !/[A-Z]/.test(firstChar);
+			}
+			return firstChar === startLetter;
+		});
+	}, [allItems, startLetter]);
+
+	const itemsRef = useRef(items);
+	itemsRef.current = items;
 
 	const getItemTypeForLibrary = useCallback(() => {
 		if (!library) return 'Movie,Series';
@@ -89,11 +102,15 @@ const Library = ({library, onSelectItem, onBack}) => {
 		if (!library) return;
 
 		if (append && loadingMoreRef.current) return;
-		loadingMoreRef.current = true;
+
+		if (append) {
+			loadingMoreRef.current = true;
+		}
 
 		try {
 			const [sortField, sortOrder] = sortBy.split(',');
 			const collectionType = library.CollectionType?.toLowerCase();
+
 			const params = {
 				ParentId: library.Id,
 				StartIndex: startIndex,
@@ -103,7 +120,7 @@ const Library = ({library, onSelectItem, onBack}) => {
 				Recursive: true,
 				IncludeItemTypes: getItemTypeForLibrary(),
 				EnableTotalRecordCount: true,
-				Fields: 'PrimaryImageAspectRatio,ProductionYear,Overview,ImageTags,BackdropImageTags,ParentBackdropImageTags,ParentBackdropItemId,SeriesId,SeriesPrimaryImageTag'
+				Fields: 'ProductionYear,ImageTags'
 			};
 
 			const excludeTypes = getExcludeItemTypes();
@@ -127,114 +144,52 @@ const Library = ({library, onSelectItem, onBack}) => {
 				}
 			}
 
-			console.log('[Library] loadItems params:', JSON.stringify(params));
 			const result = await api.getItems(params);
-			console.log('[Library] API returned:', result.TotalRecordCount, 'total,', result.Items?.length, 'items');
 			let newItems = result.Items || [];
 
 			if (excludeTypes && newItems.length > 0) {
-				const before = newItems.length;
 				newItems = newItems.filter(item => item.Type !== 'BoxSet');
-				const filtered = before - newItems.length;
-				if (filtered > 0) {
-					console.log('[Library] Filtered out', filtered, 'BoxSets');
-				}
 			}
 
 			apiFetchIndexRef.current = append ? apiFetchIndexRef.current + (result.Items?.length || 0) : (result.Items?.length || 0);
 
 			setAllItems(prev => append ? [...prev, ...newItems] : newItems);
 			setTotalCount(result.TotalRecordCount || 0);
-
-			if (!append && newItems.length > 0 && !backdropSetRef.current) {
-				const firstItemWithBackdrop = newItems.find(item => getBackdropId(item));
-				if (firstItemWithBackdrop) {
-					const url = getImageUrl(serverUrl, getBackdropId(firstItemWithBackdrop), 'Backdrop', {maxWidth: 1920, quality: 100});
-					setBackdropUrl(url);
-					backdropSetRef.current = true;
-				}
-			}
 		} catch (err) {
-			console.error('Failed to load library items:', err);
+			// Silent fail
 		} finally {
 			setIsLoading(false);
 			loadingMoreRef.current = false;
 		}
-	}, [api, library, sortBy, filter, serverUrl, getItemTypeForLibrary, getExcludeItemTypes]);
+	}, [api, library, sortBy, filter, getItemTypeForLibrary, getExcludeItemTypes]);
 
 	useEffect(() => {
-		console.log('[Library] useEffect triggered - library:', library?.Name);
 		if (library) {
 			setIsLoading(true);
 			setAllItems([]);
-			setItems([]);
-			setTotalCount(0);
-			itemsRef.current = [];
-			apiFetchIndexRef.current = 0;
 			loadingMoreRef.current = false;
-			backdropSetRef.current = false;
+			apiFetchIndexRef.current = 0;
+			initialFocusDoneRef.current = false;
 			loadItems(0, false);
 		}
 	}, [library, sortBy, filter, loadItems]);
 
 	useEffect(() => {
-		if (allItems.length === 0) {
-			setItems([]);
-			itemsRef.current = [];
-			return;
-		}
-
-		let filtered = allItems;
-		if (startLetter) {
-			if (startLetter === '#') {
-				filtered = allItems.filter(item => {
-					const firstChar = item.SortName?.[0] || item.Name?.[0] || '';
-					return !/^[A-Za-z]/.test(firstChar);
-				});
-			} else {
-				filtered = allItems.filter(item => {
-					const firstChar = (item.SortName?.[0] || item.Name?.[0] || '').toUpperCase();
-					return firstChar === startLetter;
-				});
-			}
-		}
-		console.log('[Library] Filter letter:', startLetter, '- showing', filtered.length, 'of', allItems.length, 'items');
-		setItems(filtered);
-		itemsRef.current = filtered;
-
-		if (allItems.length > 0 && !isLoading) {
+		if (items.length > 0 && !isLoading && !initialFocusDoneRef.current) {
 			setTimeout(() => {
-				const firstItem = document.querySelector(`.${css.grid} .spottable`);
-				if (firstItem) {
-					firstItem.focus();
-				}
+				Spotlight.focus('library-grid');
+				initialFocusDoneRef.current = true;
 			}, 100);
 		}
-	}, [allItems, startLetter, isLoading]);
+	}, [items.length, isLoading]);
 
-	const updateBackdrop = useCallback((ev) => {
-		const itemIndex = ev.currentTarget?.dataset?.index;
-		if (itemIndex === undefined) return;
-
-		const item = itemsRef.current[parseInt(itemIndex, 10)];
-		if (!item) return;
-
-		const backdropId = getBackdropId(item);
-		if (backdropId) {
-			const url = getImageUrl(serverUrl, backdropId, 'Backdrop', {maxWidth: 1280, quality: 80});
-			if (pendingBackdropUrlRef.current === url) return;
-			pendingBackdropUrlRef.current = url;
-
-			if (backdropTimeoutRef.current) {
-				clearTimeout(backdropTimeoutRef.current);
-			}
-			backdropTimeoutRef.current = setTimeout(() => {
-				window.requestAnimationFrame(() => {
-					setBackdropUrl(url);
-				});
-			}, BACKDROP_DEBOUNCE_MS);
+	useEffect(() => {
+		if (startLetter && items.length > 0 && !isLoading) {
+			setTimeout(() => {
+				Spotlight.focus('library-grid');
+			}, 100);
 		}
-	}, [serverUrl]);
+	}, [startLetter, items.length, isLoading]);
 
 	const handleItemClick = useCallback((ev) => {
 		const itemIndex = ev.currentTarget?.dataset?.index;
@@ -247,27 +202,10 @@ const Library = ({library, onSelectItem, onBack}) => {
 	}, [onSelectItem]);
 
 	const handleScrollStop = useCallback(() => {
-		console.log('[Library] handleScrollStop - apiFetchIndexRef:', apiFetchIndexRef.current, 'totalCount:', totalCount, 'isLoading:', isLoading);
 		if (apiFetchIndexRef.current < totalCount && !isLoading && !loadingMoreRef.current) {
-			console.log('[Library] Loading more items from index:', apiFetchIndexRef.current);
 			loadItems(apiFetchIndexRef.current, true);
 		}
 	}, [totalCount, isLoading, loadItems]);
-
-	const handleLetterKeyDown = useCallback((ev) => {
-		if (ev.keyCode === 13 || ev.keyCode === 16777221) {
-			const letter = ev.currentTarget?.dataset?.letter;
-			if (letter) {
-				setStartLetter(letter === startLetter ? null : letter);
-				setTimeout(() => {
-					const firstItem = document.querySelector(`.${css.grid} .spottable`);
-					if (firstItem) {
-						Spotlight.focus(firstItem);
-					}
-				}, 100);
-			}
-		}
-	}, [startLetter]);
 
 	const handleLetterSelect = useCallback((ev) => {
 		const letter = ev.currentTarget?.dataset?.letter;
@@ -275,6 +213,32 @@ const Library = ({library, onSelectItem, onBack}) => {
 			setStartLetter(letter === startLetter ? null : letter);
 		}
 	}, [startLetter]);
+
+	const handleToolbarKeyDown = useCallback((e) => {
+		if (e.keyCode === 38) {
+			e.preventDefault();
+			e.stopPropagation();
+			Spotlight.focus('navbar');
+		} else if (e.keyCode === 40) {
+			e.preventDefault();
+			e.stopPropagation();
+			Spotlight.focus('library-grid');
+		}
+	}, []);
+
+	const handleGridKeyDown = useCallback((e) => {
+		if (e.keyCode === 38) {
+			const grid = document.querySelector(`.${css.grid}`);
+			if (grid) {
+				const scrollTop = grid.scrollTop || 0;
+				if (scrollTop < 50) {
+					e.preventDefault();
+					e.stopPropagation();
+					Spotlight.focus('library-letter-hash');
+				}
+			}
+		}
+	}, []);
 
 	const handleOpenSortModal = useCallback(() => {
 		setShowSortModal(true);
@@ -322,10 +286,8 @@ const Library = ({library, onSelectItem, onBack}) => {
 
 	const renderItem = useCallback(({index, ...rest}) => {
 		const item = itemsRef.current[index];
-
 		const isNearEnd = index >= items.length - 50;
 		if (isNearEnd && apiFetchIndexRef.current < totalCount && !isLoading && !loadingMoreRef.current) {
-			console.log('[Library] Near end of items, loading more from index:', apiFetchIndexRef.current);
 			loadItems(apiFetchIndexRef.current, true);
 		}
 
@@ -347,7 +309,6 @@ const Library = ({library, onSelectItem, onBack}) => {
 				{...rest}
 				className={css.itemCard}
 				onClick={handleItemClick}
-				onFocus={updateBackdrop}
 				data-index={index}
 			>
 				{imageUrl ? (
@@ -372,7 +333,7 @@ const Library = ({library, onSelectItem, onBack}) => {
 				</div>
 			</SpottableDiv>
 		);
-	}, [serverUrl, handleItemClick, updateBackdrop, items.length, totalCount, isLoading, loadItems]);
+	}, [serverUrl, handleItemClick, items.length, totalCount, isLoading, loadItems]);
 
 	const currentSort = SORT_OPTIONS.find(o => o.key === sortBy);
 	const currentFilter = FILTER_OPTIONS.find(o => o.key === filter);
@@ -387,13 +348,6 @@ const Library = ({library, onSelectItem, onBack}) => {
 
 	return (
 		<div className={css.page}>
-			<div className={css.backdrop}>
-				{backdropUrl && (
-					<img className={css.backdropImage} src={backdropUrl} alt="" />
-				)}
-				<div className={css.backdropOverlay} />
-			</div>
-
 			<div className={css.content}>
 				<div className={css.header}>
 					<div className={css.titleSection}>
@@ -406,7 +360,7 @@ const Library = ({library, onSelectItem, onBack}) => {
 					<div className={css.counter}>{totalCount} items</div>
 				</div>
 
-				<div className={css.toolbar}>
+				<ToolbarContainer className={css.toolbar} spotlightId="library-toolbar" onKeyDown={handleToolbarKeyDown}>
 					<SpottableButton
 						className={css.sortButton}
 						onClick={handleOpenSortModal}
@@ -428,21 +382,21 @@ const Library = ({library, onSelectItem, onBack}) => {
 					</SpottableButton>
 
 					<div className={css.letterNav}>
-						{LETTERS.map(letter => (
+						{LETTERS.map((letter, index) => (
 							<SpottableButton
 								key={letter}
 								className={`${css.letterButton} ${startLetter === letter ? css.active : ''}`}
 								onClick={handleLetterSelect}
-								onKeyDown={handleLetterKeyDown}
 								data-letter={letter}
+								spotlightId={index === 0 ? 'library-letter-hash' : undefined}
 							>
 								{letter}
 							</SpottableButton>
 						))}
 					</div>
-				</div>
+				</ToolbarContainer>
 
-				<div className={css.gridContainer}>
+				<GridContainer className={css.gridContainer}>
 					{isLoading && items.length === 0 ? (
 						<div className={css.loading}>
 							<LoadingSpinner />
@@ -457,10 +411,11 @@ const Library = ({library, onSelectItem, onBack}) => {
 							itemSize={{minWidth: 180, minHeight: 340}}
 							spacing={20}
 							onScrollStop={handleScrollStop}
+							onKeyDown={handleGridKeyDown}
 							spotlightId="library-grid"
 						/>
 					)}
-				</div>
+				</GridContainer>
 			</div>
 
 			<Popup
