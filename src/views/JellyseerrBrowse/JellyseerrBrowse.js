@@ -182,7 +182,12 @@ const JellyseerrBrowse = ({browseType, item, mediaType: initialMediaType, onSele
 			}
 		};
 		document.addEventListener('keydown', handleKeyDown);
-		return () => document.removeEventListener('keydown', handleKeyDown);
+		return () => {
+			document.removeEventListener('keydown', handleKeyDown);
+			if (backdropTimeoutRef.current) {
+				clearTimeout(backdropTimeoutRef.current);
+			}
+		};
 	}, [showFilterModal, onBack]);
 
 	const handleFilterSelect = useCallback((ev) => {

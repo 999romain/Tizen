@@ -276,7 +276,12 @@ const JellyseerrDiscover = ({onSelectItem, onSelectGenre, onSelectNetwork, onSel
 			}
 		};
 		document.addEventListener('keydown', handleKeyDown);
-		return () => document.removeEventListener('keydown', handleKeyDown);
+		return () => {
+			document.removeEventListener('keydown', handleKeyDown);
+			if (backdropTimeoutRef.current) {
+				clearTimeout(backdropTimeoutRef.current);
+			}
+		};
 	}, [onBack]);
 
 	// Initial load - fetch first 9 items for each row
