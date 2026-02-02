@@ -64,6 +64,7 @@ const AppContent = (props) => {
 	const [selectedGenre, setSelectedGenre] = useState(null);
 	const [selectedGenreLibraryId, setSelectedGenreLibraryId] = useState(null);
 	const [playingItem, setPlayingItem] = useState(null);
+	const [playbackOptions, setPlaybackOptions] = useState(null);
 	const [panelHistory, setPanelHistory] = useState([]);
 	const [jellyseerrItem, setJellyseerrItem] = useState(null);
 	const [jellyseerrBrowse, setJellyseerrBrowse] = useState(null);
@@ -185,8 +186,9 @@ const AppContent = (props) => {
 		navigateTo(PANELS.LIBRARY);
 	}, [navigateTo]);
 
-	const handlePlay = useCallback((item) => {
+	const handlePlay = useCallback((item, resume, options) => {
 		setPlayingItem(item);
+		setPlaybackOptions(options || null);
 		navigateTo(PANELS.PLAYER);
 	}, [navigateTo]);
 
@@ -374,6 +376,8 @@ const AppContent = (props) => {
 						onEnded={handlePlayerEnd}
 						onBack={handlePlayerEnd}
 						onPlayNext={handlePlayNext}
+						initialAudioIndex={playbackOptions?.audioIndex}
+						initialSubtitleIndex={playbackOptions?.subtitleIndex}
 					/>
 				) : null;
 			case PANELS.FAVORITES:

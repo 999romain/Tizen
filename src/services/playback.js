@@ -144,7 +144,10 @@ const extractSubtitleStreams = (mediaSource) => {
 			isForced: s.IsForced,
 			isDefault: s.IsDefault,
 			isTextBased: ['srt', 'vtt', 'ass', 'ssa', 'sub', 'smi'].includes(s.Codec?.toLowerCase()),
-			deliveryUrl: s.DeliveryUrl ? `${serverUrl}${s.DeliveryUrl}` : null
+			deliveryMethod: s.DeliveryMethod,
+			deliveryUrl: s.DeliveryMethod === 'External' && s.DeliveryUrl
+				? (s.DeliveryUrl.startsWith('http') ? s.DeliveryUrl : `${serverUrl}${s.DeliveryUrl}`)
+				: null
 		}));
 };
 
@@ -232,13 +235,19 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 
 export const getSubtitleUrl = (subtitleStream) => {
 	if (!subtitleStream || !currentSession) return null;
-	if (subtitleStream.deliveryUrl) return subtitleStream.deliveryUrl;
 
-	const {itemId, mediaSourceId} = currentSession;
-	const serverUrl = jellyfinApi.getServerUrl();
-	const apiKey = jellyfinApi.getApiKey();
+	if (subtitleStream.deliveryMethod === 'External' && subtitleStream.deliveryUrl) {
+		return subtitleStream.deliveryUrl;
+	}
 
-	return `${serverUrl}/Videos/${itemId}/${mediaSourceId}/Subtitles/${subtitleStream.index}/Stream.vtt?api_key=${apiKey}`;
+	if (subtitleStream.isTextBased) {
+		const {itemId, mediaSourceId} = currentSession;
+		const serverUrl = jellyfinApi.getServerUrl();
+		const apiKey = jellyfinApi.getApiKey();
+		return `${serverUrl}/Videos/${itemId}/${mediaSourceId}/Subtitles/${subtitleStream.index}/Stream.vtt?api_key=${apiKey}`;
+	}
+
+	return null;
 };
 
 export const getChapterImageUrl = (itemId, chapterIndex, width = 320) => {

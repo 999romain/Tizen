@@ -130,7 +130,7 @@ const IconInfo = () => (
 );
 const SKIP_SECONDS = 10;
 
-const Player = ({item, onEnded, onBack, onPlayNext}) => {
+const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSubtitleIndex}) => {
 	const {settings} = useSettings();
 
 	const [mediaUrl, setMediaUrl] = useState(null);
@@ -248,12 +248,22 @@ const Player = ({item, onEnded, onBack, onPlayNext}) => {
 				setSubtitleStreams(result.subtitleStreams || []);
 				setChapters(result.chapters || []);
 
-				// Default audio
-				const defaultAudio = result.audioStreams?.find(s => s.isDefault);
-				if (defaultAudio) setSelectedAudioIndex(defaultAudio.index);
+				// Handle initial audio selection
+				if (initialAudioIndex !== undefined && initialAudioIndex !== null) {
+					setSelectedAudioIndex(initialAudioIndex);
+				} else {
+					const defaultAudio = result.audioStreams?.find(s => s.isDefault);
+					if (defaultAudio) setSelectedAudioIndex(defaultAudio.index);
+				}
 
-				// Handle subtitles based on settings
-				if (settings.subtitleMode === 'always') {
+				// Handle initial subtitle selection
+				if (initialSubtitleIndex !== undefined && initialSubtitleIndex !== null) {
+					const initialSub = result.subtitleStreams?.find(s => s.index === initialSubtitleIndex);
+					if (initialSub) {
+						setSelectedSubtitleIndex(initialSubtitleIndex);
+						setSubtitleUrl(playback.getSubtitleUrl(initialSub));
+					}
+				} else if (settings.subtitleMode === 'always') {
 					const defaultSub = result.subtitleStreams?.find(s => s.isDefault);
 					if (defaultSub) {
 						setSelectedSubtitleIndex(defaultSub.index);
