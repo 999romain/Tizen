@@ -105,6 +105,19 @@ export const dismissVersion = async (version) => {
 };
 
 /**
+ * Clear version check cache (for testing)
+ * Resets cooldown timer and dismissed version
+ */
+export const clearVersionCache = async () => {
+	try {
+		await saveToStorage(STORAGE_KEY_LAST_CHECK, null);
+		await saveToStorage(STORAGE_KEY_DISMISSED_VERSION, null);
+	} catch (e) {
+		console.warn('[VERSION] Failed to clear cache:', e);
+	}
+};
+
+/**
  * Fetch latest release info from GitHub
  * @returns {Promise<Object|null>} Release info object or null
  */
@@ -131,22 +144,14 @@ const fetchLatestRelease = async () => {
 /**
  * Format release notes for display
  * @param {string} notes - Raw release notes
- * @returns {string} Formatted text (truncated)
+ * @returns {string} Formatted text
  */
 export const formatReleaseNotes = (notes) => {
 	if (!notes) return 'A new version is available. Visit GitHub to download.';
 
-	let formatted = notes.substring(0, 500);
-	if (notes.length > 500) {
-		formatted += '...';
-	}
-
-	// Remove markdown formatting for simple display
-	formatted = formatted
-		.replace(/\*\*(.*?)\*\*/g, '$1')
-		.replace(/\*(.*?)\*/g, '$1')
-		.replace(/#{1,6}\s/g, '')
-		.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+	// Keep full notes, only clean up links for display
+	let formatted = notes
+		.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');  // Convert links to just text
 
 	return formatted;
 };
@@ -157,12 +162,9 @@ export const formatReleaseNotes = (notes) => {
  * @returns {Promise<Object|null>} Update info if available, null otherwise
  */
 export const checkForUpdates = async (forceCheck = false) => {
-	console.log('[VERSION] Checking for updates...');
-
 	if (!forceCheck) {
 		const shouldCheck = await shouldCheckForUpdate();
 		if (!shouldCheck) {
-			console.log('[VERSION] Skipping check (cooldown period)');
 			return null;
 		}
 	}
@@ -173,18 +175,14 @@ export const checkForUpdates = async (forceCheck = false) => {
 	await markChecked();
 
 	if (!releaseInfo || !releaseInfo.tag_name) {
-		console.log('[VERSION] No release information available');
 		return null;
 	}
 
 	const latestVersion = releaseInfo.tag_name.replace(/^v/, '');
 
-	console.log('[VERSION] Current:', currentVersion, 'Latest:', latestVersion);
-
 	if (compareVersions(currentVersion, latestVersion) < 0) {
 		const dismissed = await isVersionDismissed(latestVersion);
 		if (!dismissed) {
-			console.log('[VERSION] Newer version available:', latestVersion);
 			return {
 				currentVersion,
 				latestVersion,
@@ -193,9 +191,6 @@ export const checkForUpdates = async (forceCheck = false) => {
 				publishedAt: releaseInfo.published_at
 			};
 		}
-		console.log('[VERSION] Update available but dismissed by user');
-	} else {
-		console.log('[VERSION] App is up to date');
 	}
 
 	return null;
