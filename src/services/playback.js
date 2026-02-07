@@ -1,6 +1,6 @@
 import * as jellyfinApi from './jellyfinApi';
 import {getJellyfinDeviceProfile, getDeviceCapabilities} from './deviceProfile';
-import {getPlayMethod, getMimeType} from './tizenVideo';
+import {getPlayMethod, getMimeType, findCompatibleAudioStreamIndex, getSupportedAudioCodecs} from './tizenVideo';
 
 export const PlayMethod = {
 	DirectPlay: 'DirectPlay',
@@ -42,6 +42,8 @@ const selectMediaSource = (mediaSources, capabilities, options) => {
 		if (source) return source;
 	}
 
+	const supportedAudio = getSupportedAudioCodecs(capabilities);
+
 	const scored = mediaSources.map(source => {
 		let score = 0;
 		const playMethodResult = getPlayMethod(source, capabilities);
@@ -62,14 +64,22 @@ const selectMediaSource = (mediaSources, capabilities, options) => {
 			else if (rangeType.includes('HDR') && capabilities.hdr10) score += 5;
 		}
 
-		const audioStream = source.MediaStreams?.find(s => s.Type === 'Audio');
-		if (audioStream) {
-			// Prefer lossless/high-quality audio the TV actually supports
-			if (audioStream.Codec === 'eac3') score += 10;
-			else if (audioStream.Codec === 'ac3') score += 8;
-			else if (audioStream.Channels >= 6) score += 5;
-			// Note: DTS and TrueHD excluded — not supported on Samsung TVs
+		// Score based on the best COMPATIBLE audio stream, not just the first one
+		const audioStreams = source.MediaStreams?.filter(s => s.Type === 'Audio') || [];
+		const compatibleAudio = audioStreams.filter(s => supportedAudio.includes((s.Codec || '').toLowerCase()));
+		if (compatibleAudio.length > 0) {
+			// Score based on the best compatible track
+			const bestAudio = compatibleAudio.reduce((best, s) => {
+				let trackScore = 0;
+				if (s.Codec === 'eac3') trackScore = 10;
+				else if (s.Codec === 'ac3') trackScore = 8;
+				else if (s.Channels >= 6) trackScore = 5;
+				else trackScore = 3;
+				return trackScore > best.score ? {stream: s, score: trackScore} : best;
+			}, {stream: null, score: 0});
+			score += bestAudio.score;
 		}
+		// Note: DTS and TrueHD excluded — not supported on Samsung TVs
 
 		return {source, score, playMethod: playMethodResult};
 	});
@@ -205,6 +215,15 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 	const api = options.item ? getApiForItem(options.item) : jellyfinApi.api;
 	const creds = options.item ? getServerCredentials(options.item) : null;
 
+	// Auto-select a compatible audio stream if the user hasn't explicitly chosen one.
+	// This prevents the server from forcing remux/transcode when the default audio track
+	// is unsupported (e.g. DTS primary + AC3 secondary in a 4K remux).
+	let audioStreamIndex = options.audioStreamIndex;
+	if (audioStreamIndex == null && options.enableDirectPlay !== false) {
+		// We'll do a preliminary check after getting playback info and
+		// re-request if needed. For now, pass undefined to get the default.
+	}
+
 	const playbackInfo = await api.getPlaybackInfo(itemId, {
 		DeviceProfile: deviceProfile,
 		StartTimeTicks: options.startPositionTicks || 0,
@@ -212,7 +231,7 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 		EnableDirectPlay: options.enableDirectPlay !== false,
 		EnableDirectStream: options.enableDirectStream !== false,
 		EnableTranscoding: options.enableTranscoding !== false,
-		AudioStreamIndex: options.audioStreamIndex,
+		AudioStreamIndex: audioStreamIndex,
 		SubtitleStreamIndex: options.subtitleStreamIndex,
 		MaxStreamingBitrate: options.maxBitrate,
 		MediaSourceId: options.mediaSourceId
@@ -222,7 +241,45 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 		throw new Error('No playable media source found');
 	}
 
-	const mediaSource = selectMediaSource(playbackInfo.MediaSources, capabilities, options);
+	let mediaSource = selectMediaSource(playbackInfo.MediaSources, capabilities, options);
+
+	// If no explicit audio stream was chosen by the user, check if the default audio
+	// track is compatible. If not, auto-select the first compatible one and re-request
+	// playback info so the server evaluates DirectPlay against the compatible track.
+	if (options.audioStreamIndex == null && mediaSource.DefaultAudioStreamIndex != null) {
+		const defaultAudioStream = mediaSource.MediaStreams?.find(
+			s => s.Type === 'Audio' && s.Index === mediaSource.DefaultAudioStreamIndex
+		);
+		const defaultCodec = (defaultAudioStream?.Codec || '').toLowerCase();
+		const supportedAudio = getSupportedAudioCodecs(capabilities);
+
+		if (defaultCodec && !supportedAudio.includes(defaultCodec)) {
+			const compatibleIndex = findCompatibleAudioStreamIndex(mediaSource, capabilities);
+			if (compatibleIndex >= 0) {
+				console.log(`[playback] Default audio track ${mediaSource.DefaultAudioStreamIndex} (${defaultCodec}) unsupported, auto-selecting compatible track ${compatibleIndex}`);
+				const retryInfo = await api.getPlaybackInfo(itemId, {
+					DeviceProfile: deviceProfile,
+					StartTimeTicks: options.startPositionTicks || 0,
+					AutoOpenLiveStream: true,
+					EnableDirectPlay: options.enableDirectPlay !== false,
+					EnableDirectStream: options.enableDirectStream !== false,
+					EnableTranscoding: options.enableTranscoding !== false,
+					AudioStreamIndex: compatibleIndex,
+					SubtitleStreamIndex: options.subtitleStreamIndex,
+					MaxStreamingBitrate: options.maxBitrate,
+					MediaSourceId: options.mediaSourceId || mediaSource.Id
+				});
+				if (retryInfo.MediaSources?.length) {
+					mediaSource = selectMediaSource(retryInfo.MediaSources, capabilities, options);
+					audioStreamIndex = compatibleIndex;
+					console.log(`[playback] Re-requested with audio track ${compatibleIndex}, play method: ${determinePlayMethod(mediaSource, capabilities)}`);
+				}
+			} else {
+				console.warn(`[playback] No compatible audio track found — server will remux/transcode`);
+			}
+		}
+	}
+
 	const playMethod = determinePlayMethod(mediaSource, capabilities);
 	const url = buildPlaybackUrl(itemId, mediaSource, playbackInfo.PlaySessionId, playMethod, creds);
 	const audioStreams = extractAudioStreams(mediaSource);
@@ -237,7 +294,7 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 		playMethod,
 		startPositionTicks: options.startPositionTicks || 0,
 		capabilities,
-		audioStreamIndex: options.audioStreamIndex ?? mediaSource.DefaultAudioStreamIndex,
+		audioStreamIndex: audioStreamIndex ?? options.audioStreamIndex ?? mediaSource.DefaultAudioStreamIndex,
 		subtitleStreamIndex: options.subtitleStreamIndex ?? mediaSource.DefaultSubtitleStreamIndex,
 		maxBitrate: options.maxBitrate,
 		// Cross-server support: store server credentials for progress reporting

@@ -134,12 +134,41 @@ export const getMediaCapabilities = async () => {
 	return capabilities;
 };
 
+/**
+ * Get the list of audio codecs supported by the TV hardware.
+ */
+export const getSupportedAudioCodecs = (capabilities) => {
+	const codecs = ['aac', 'mp3', 'flac', 'opus', 'vorbis', 'pcm', 'wav'];
+	if (capabilities.ac3) codecs.push('ac3');
+	if (capabilities.eac3) codecs.push('eac3');
+	// DTS: Samsung explicitly states not supported on any TV (2018-2025)
+	// TrueHD: Not documented in Samsung specifications
+	return codecs;
+};
+
+/**
+ * Find the first compatible audio stream index for a media source.
+ * Returns the index of the first audio stream whose codec is supported,
+ * or -1 if no compatible audio stream exists.
+ */
+export const findCompatibleAudioStreamIndex = (mediaSource, capabilities) => {
+	if (!mediaSource?.MediaStreams) return -1;
+	const supported = getSupportedAudioCodecs(capabilities);
+	const audioStreams = mediaSource.MediaStreams.filter(s => s.Type === 'Audio');
+	for (const stream of audioStreams) {
+		const codec = (stream.Codec || '').toLowerCase();
+		if (!codec || supported.includes(codec)) {
+			return stream.Index;
+		}
+	}
+	return -1;
+};
+
 export const getPlayMethod = (mediaSource, capabilities) => {
 	if (!mediaSource) return 'Transcode';
 
 	const container = (mediaSource.Container || '').toLowerCase();
 	const videoStream = mediaSource.MediaStreams?.find(s => s.Type === 'Video');
-	const audioStream = mediaSource.MediaStreams?.find(s => s.Type === 'Audio');
 
 	const videoCodec = (videoStream?.Codec || '').toLowerCase();
 	const supportedVideoCodecs = ['h264', 'avc'];
@@ -148,19 +177,23 @@ export const getPlayMethod = (mediaSource, capabilities) => {
 	if (capabilities.vp9) supportedVideoCodecs.push('vp9');
 	if (capabilities.dolbyVision) supportedVideoCodecs.push('dvhe', 'dvh1');
 
-	const audioCodec = (audioStream?.Codec || '').toLowerCase();
 	// Audio codecs per Samsung spec tables — DTS and TrueHD intentionally excluded
-	const supportedAudioCodecs = ['aac', 'mp3', 'flac', 'opus', 'vorbis', 'pcm', 'wav'];
-	if (capabilities.ac3) supportedAudioCodecs.push('ac3');
-	if (capabilities.eac3) supportedAudioCodecs.push('eac3');
-	// DTS: Samsung explicitly states not supported on any TV (2018-2025)
-	// TrueHD: Not documented in Samsung specifications
+	const supportedAudioCodecs = getSupportedAudioCodecs(capabilities);
+
+	// Check if ANY audio stream is compatible (not just the first/default one).
+	// Samsung TVs can select audio tracks from containers like MKV/MP4.
+	// A file with DTS primary + AC3 secondary should still DirectPlay.
+	const audioStreams = mediaSource.MediaStreams?.filter(s => s.Type === 'Audio') || [];
+	const hasCompatibleAudio = audioStreams.length === 0 || audioStreams.some(s => {
+		const codec = (s.Codec || '').toLowerCase();
+		return !codec || supportedAudioCodecs.includes(codec);
+	});
 
 	const supportedContainers = ['mp4', 'm4v', 'mov', 'ts', 'mpegts', 'mkv', 'matroska', 'webm', 'avi'];
 	if (capabilities.nativeHls) supportedContainers.push('m3u8');
 
 	const videoOk = !videoCodec || supportedVideoCodecs.includes(videoCodec);
-	const audioOk = !audioCodec || supportedAudioCodecs.includes(audioCodec);
+	const audioOk = hasCompatibleAudio;
 	const containerOk = !container || supportedContainers.includes(container);
 
 	// Samsung docs: "HEVC: Supported only for MKV/MP4/TS containers"
@@ -190,10 +223,13 @@ export const getPlayMethod = (mediaSource, capabilities) => {
 		}
 	}
 
+	const defaultAudioCodec = (audioStreams[0]?.Codec || '').toLowerCase();
 	console.log('[tizenVideo] getPlayMethod check:', {
 		container,
 		videoCodec,
-		audioCodec,
+		defaultAudioCodec,
+		audioStreamCount: audioStreams.length,
+		compatibleAudioStreams: audioStreams.filter(s => supportedAudioCodecs.includes((s.Codec || '').toLowerCase())).map(s => `${s.Index}:${s.Codec}`),
 		videoRange: videoStream?.VideoRangeType,
 		videoOk,
 		audioOk,
@@ -202,9 +238,6 @@ export const getPlayMethod = (mediaSource, capabilities) => {
 		hevcContainerOk,
 		vp9ContainerOk,
 		av1ContainerOk,
-		supportedContainers,
-		supportedVideoCodecs,
-		supportedAudioCodecs,
 		serverSupportsDirectPlay: mediaSource.SupportsDirectPlay
 	});
 
@@ -528,6 +561,8 @@ export default {
 	getMediaCapabilities,
 	getPlayMethod,
 	getMimeType,
+	getSupportedAudioCodecs,
+	findCompatibleAudioStreamIndex,
 	setDisplayWindow,
 	registerAppStateObserver,
 	keepScreenOn,
