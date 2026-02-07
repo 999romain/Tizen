@@ -5,7 +5,7 @@ import Spotlight from '@enact/spotlight';
 import Button from '@enact/sandstone/Button';
 import Scroller from '@enact/sandstone/Scroller';
 import * as playback from '../../services/playback';
-import {initTizenAPI, registerAppStateObserver, keepScreenOn} from '../../services/tizenVideo';
+import {initTizenAPI, registerAppStateObserver, keepScreenOn, cleanupVideoElement} from '../../services/tizenVideo';
 import {useSettings} from '../../context/SettingsContext';
 import {TIZEN_KEYS, isBackKey, isPlayPauseKey} from '../../utils/tizenKeys';
 import TrickplayPreview from '../../components/TrickplayPreview';
@@ -375,6 +375,8 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 
 			playback.stopProgressReporting();
 			playback.stopHealthMonitoring();
+			cleanupVideoElement(videoRef.current);
+
 			if (nextEpisodeTimerRef.current) {
 				clearInterval(nextEpisodeTimerRef.current);
 			}
@@ -540,6 +542,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 		if (nextEpisode && onPlayNext) {
 			onPlayNext(nextEpisode);
 		} else {
+			cleanupVideoElement(videoRef.current);
 			onEnded?.();
 		}
 	}, [onEnded, onPlayNext, nextEpisode]);
@@ -579,6 +582,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 	const handleBack = useCallback(async () => {
 		cancelNextEpisodeCountdown();
 		await playback.reportStop(positionRef.current);
+		cleanupVideoElement(videoRef.current);
 		onBack?.();
 	}, [onBack, cancelNextEpisodeCountdown]);
 
