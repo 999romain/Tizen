@@ -404,6 +404,27 @@ export const avplaySetDrm = (drmType, operation, drmData) => {
 	webapis.avplay.setDrm(drmType, operation, drmData);
 };
 
+export const avplaySelectTrack = (type, index) => {
+	if (!isAVPlayAvailable) return;
+	try {
+		// type: 'AUDIO' or 'SUBTITLE'
+		webapis.avplay.setSelectTrack(type, index);
+		console.log(`[tizenVideo] Selected ${type} track index: ${index}`);
+	} catch (e) {
+		console.warn(`[tizenVideo] Failed to select ${type} track:`, e);
+	}
+};
+
+export const avplaySetSilentSubtitle = (silent) => {
+	if (!isAVPlayAvailable) return;
+	try {
+		webapis.avplay.setSilentSubtitle(silent);
+		console.log(`[tizenVideo] Set silent subtitle: ${silent}`);
+	} catch (e) {
+		console.warn('[tizenVideo] Failed to set silent subtitle:', e);
+	}
+};
+
 /**
  * Release hardware video resources and reset HDR display mode.
  * Critical on Tizen due to limited hardware decoder instances.
@@ -562,5 +583,7 @@ export default {
 	avplayGetState,
 	avplaySetListener,
 	avplaySetSpeed,
-	avplaySetDrm
+	avplaySetDrm,
+	avplaySelectTrack,
+	avplaySetSilentSubtitle
 };

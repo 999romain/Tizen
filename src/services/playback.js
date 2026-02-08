@@ -175,7 +175,7 @@ const extractSubtitleStreams = (mediaSource, credentials = null) => {
 			const codec = s.Codec?.toLowerCase() || '';
 			// Text-based subtitle codecs that can be rendered client-side
 			// subrip = srt, webvtt = vtt, sami = smi
-			const isTextBased = ['srt', 'subrip', 'vtt', 'webvtt', 'ass', 'ssa', 'sub', 'smi', 'sami'].includes(codec);
+			const isTextBased = ['srt', 'subrip', 'vtt', 'webvtt', 'ass', 'ssa', 'sub', 'smi', 'sami', 'mov_text', 'tx3g'].includes(codec);
 			const isExternal = s.IsExternal;
 			const deliveryMethod = s.DeliveryMethod;
 
@@ -188,7 +188,8 @@ const extractSubtitleStreams = (mediaSource, credentials = null) => {
 				isForced: s.IsForced,
 				isDefault: s.IsDefault,
 				isTextBased,
-				isEmbeddedNative: false, // Always use server extraction
+				// Native embedded support for SRT to avoid extraction
+				isEmbeddedNative: !isExternal && (codec === 'srt' || codec === 'subrip'),
 				deliveryMethod,
 				deliveryUrl: deliveryMethod === 'External' && s.DeliveryUrl
 					? (s.DeliveryUrl.startsWith('http') ? s.DeliveryUrl : `${serverUrl}${s.DeliveryUrl}`)

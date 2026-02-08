@@ -623,6 +623,9 @@ export const getJellyfinDeviceProfile = async () => {
 		{Format: 'smi', Method: 'External'},
 		{Format: 'ttml', Method: 'External'},
 		{Format: 'sub', Method: 'External'},
+		// Embed method - allows direct play of embedded subtitles without extraction
+		{Format: 'srt', Method: 'Embed'},
+		{Format: 'subrip', Method: 'Embed'},
 		// Image-based: burn-in only (client cannot render these)
 		{Format: 'pgs', Method: 'Embed'},
 		{Format: 'dvdsub', Method: 'Embed'},

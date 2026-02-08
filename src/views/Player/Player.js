@@ -5,7 +5,7 @@ import Spotlight from '@enact/spotlight';
 import Button from '@enact/sandstone/Button';
 import Scroller from '@enact/sandstone/Scroller';
 import * as playback from '../../services/playback';
-import {initTizenAPI, registerAppStateObserver, keepScreenOn, cleanupVideoElement} from '../../services/tizenVideo';
+import {initTizenAPI, registerAppStateObserver, keepScreenOn, cleanupVideoElement, avplaySelectTrack, avplaySetSilentSubtitle} from '../../services/tizenVideo';
 import {useSettings} from '../../context/SettingsContext';
 import {TIZEN_KEYS, isBackKey, isPlayPauseKey} from '../../utils/tizenKeys';
 import TrickplayPreview from '../../components/TrickplayPreview';
@@ -281,7 +281,16 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 				// On Tizen, we fetch subtitle data as JSON and render via custom overlay
 				// because native <track> elements don't work reliably with AVPlay
 				const loadSubtitleData = async (sub) => {
-					if (sub && sub.isTextBased) {
+					if (sub && sub.isEmbeddedNative) {
+						console.log('[Player] Initial: Using native embedded subtitle (codec:', sub.codec, ')');
+						const trackIndex = result.subtitleStreams ? result.subtitleStreams.indexOf(sub) : -1;
+						if (trackIndex >= 0) {
+							avplaySelectTrack('SUBTITLE', trackIndex);
+							avplaySetSilentSubtitle(false);
+						}
+						setSubtitleTrackEvents(null);
+					} else if (sub && sub.isTextBased) {
+						avplaySetSilentSubtitle(true);
 						try {
 							const data = await playback.fetchSubtitleData(sub);
 							if (data && data.TrackEvents) {
@@ -295,6 +304,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 							setSubtitleTrackEvents(null);
 						}
 					} else {
+						avplaySetSilentSubtitle(true);
 						setSubtitleTrackEvents(null);
 					}
 					setCurrentSubtitleText(null);
@@ -711,13 +721,23 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 			setSubtitleUrl(null);
 			setSubtitleTrackEvents(null);
 			setCurrentSubtitleText(null);
+			avplaySetSilentSubtitle(true); // hide native subs when turning off
 		} else {
 			setSelectedSubtitleIndex(index);
 			const stream = subtitleStreams.find(s => s.index === index);
 			setSubtitleUrl(stream ? playback.getSubtitleUrl(stream) : null);
 
-			// Fetch subtitle data as JSON for custom rendering (Tizen doesn't support native <track>)
-			if (stream && stream.isTextBased) {
+			if (stream && stream.isEmbeddedNative) {
+				// Use AVPlay's native track selection for embedded SRT
+				const trackIndex = subtitleStreams.indexOf(stream);
+				if (trackIndex >= 0) {
+					avplaySelectTrack('SUBTITLE', trackIndex);
+					avplaySetSilentSubtitle(false);
+				}
+				setSubtitleTrackEvents(null);
+				setCurrentSubtitleText(null);
+			} else if (stream && stream.isTextBased) {
+				avplaySetSilentSubtitle(true); // hide native subs, use custom overlay
 				try {
 					const data = await playback.fetchSubtitleData(stream);
 					if (data && data.TrackEvents) {
@@ -733,6 +753,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 			} else {
 				// PGS/image-based subtitles - cannot render client-side, need burn-in via transcode
 				console.log('[Player] Image-based subtitle (codec:', stream?.codec, ') - requires burn-in via transcode');
+				avplaySetSilentSubtitle(true);
 				setSubtitleTrackEvents(null);
 			}
 			setCurrentSubtitleText(null);
@@ -1049,14 +1070,14 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 					style={{
 						bottom: settings.subtitlePosition === 'absolute'
 							? `${100 - settings.subtitlePositionAbsolute}%`
-							: `${settings.subtitlePosition === 'bottom' ? 10 : settings.subtitlePosition === 'lower' ? 15 : settings.subtitlePosition === 'middle' ? 25 : 35}%`,
+							: `${settings.subtitlePosition === 'bottom' ? 10 : settings.subtitlePosition === 'lower' ? 20 : settings.subtitlePosition === 'middle' ? 30 : 40}%`,
 						opacity: (settings.subtitleOpacity || 100) / 100
 					}}
 				>
 					<div
 						className={css.subtitleText}
 						style={{
-							fontSize: `${settings.subtitleSize === 'small' ? 28 : settings.subtitleSize === 'medium' ? 36 : settings.subtitleSize === 'large' ? 44 : 52}px`,
+							fontSize: `${settings.subtitleSize === 'small' ? 36 : settings.subtitleSize === 'medium' ? 44 : settings.subtitleSize === 'large' ? 52 : 60}px`,
 							backgroundColor: `${settings.subtitleBackgroundColor || '#000000'}${Math.round(((settings.subtitleBackground !== undefined ? settings.subtitleBackground : 75) / 100) * 255).toString(16).padStart(2, '0')}`,
 							color: settings.subtitleColor || '#ffffff',
 							textShadow: `0 0 ${settings.subtitleShadowBlur || 0.1}em ${settings.subtitleShadowColor || '#000000'}${Math.round(((settings.subtitleShadowOpacity !== undefined ? settings.subtitleShadowOpacity : 50) / 100) * 255).toString(16).padStart(2, '0')}`
