@@ -7,3 +7,4 @@ export * as discovery from './discovery';
 export * as imageProxy from './imageProxy';
 export * as versionChecker from './versionChecker';
 export * as multiServerManager from './multiServerManager';
+export * as smarthub from './smarthub';

@@ -13,6 +13,7 @@ import {
 	setupTizenLifecycle,
 	cleanupVideoElement
 } from '../services/tizenVideo';
+import {initSmartHub} from '../services/smarthub';
 import {SettingsProvider} from '../context/SettingsContext';
 import {JellyseerrProvider} from '../context/JellyseerrContext';
 import {useVersionCheck} from '../hooks/useVersionCheck';
@@ -78,6 +79,7 @@ const AppContent = (props) => {
 	const {isAuthenticated, isLoading, logout, serverUrl, serverName, api, user, hasMultipleServers} = useAuth();
 	const {settings} = useSettings();
 	const unifiedMode = settings.unifiedLibraryMode && hasMultipleServers;
+	const smartHubInitialized = useRef(false);
 	const [panelIndex, setPanelIndex] = useState(PANELS.LOGIN);
 	const [selectedItem, setSelectedItem] = useState(null);
 	const [selectedLibrary, setSelectedLibrary] = useState(null);
@@ -227,6 +229,29 @@ const AppContent = (props) => {
 		}
 	}, [isLoading, isAuthenticated, authChecked]);
 
+	// Initialize Samsung Smart Hub Preview integration
+	useEffect(() => {
+		if (isAuthenticated && !smartHubInitialized.current && isTizen()) {
+			smartHubInitialized.current = true;
+			initSmartHub();
+		}
+	}, [isAuthenticated]);
+
+	// Handle Smart Hub deep link navigation
+	useEffect(() => {
+		const handleDeepLink = (e) => {
+			const {id, type, serverId} = e.detail;
+			if (id && isAuthenticated) {
+				console.log('[App] Deep link received:', type, id);
+				setSelectedItem({Id: id, ServerId: serverId, Type: type === 'episode' ? 'Episode' : type === 'movie' ? 'Movie' : undefined});
+				navigateTo(PANELS.DETAILS);
+			}
+		};
+
+		window.addEventListener('moonfin:deepLink', handleDeepLink);
+		return () => window.removeEventListener('moonfin:deepLink', handleDeepLink);
+	}, [isAuthenticated, navigateTo]);
+
 		// Register Tizen TV keys on mount
 	useEffect(() => {
 		registerKeys(ESSENTIAL_KEY_NAMES);
@@ -278,10 +303,18 @@ const AppContent = (props) => {
 				e.stopPropagation();
 				handleBack();
 			}
-			// Handle Tizen Exit key - close app
+			// Handle Tizen Exit key - update Smart Hub then close app
 			if (e.keyCode === TIZEN_KEYS.EXIT) {
 				if (typeof tizen !== 'undefined' && tizen.application) {
-					tizen.application.getCurrentApplication().exit();
+					if (isTizen() && typeof window.runSmartViewUpdate === 'function') {
+						window.runSmartViewUpdate().then(function () {
+							tizen.application.getCurrentApplication().exit();
+						}).catch(function () {
+							tizen.application.getCurrentApplication().exit();
+						});
+					} else {
+						tizen.application.getCurrentApplication().exit();
+					}
 				}
 			}
 		};

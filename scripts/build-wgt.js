@@ -205,6 +205,16 @@ async function main() {
 	copyFiles(TIZEN_DIR, DIST);
 	success('Copied config.xml and icons');
 	
+	// Step 3.5: Copy Smart Hub Preview background service
+	const serviceDir = path.join(TIZEN_DIR, 'service');
+	const distServiceDir = path.join(DIST, 'service');
+	if (fs.existsSync(serviceDir)) {
+		log('Copying Smart Hub Preview service...');
+		if (!fs.existsSync(distServiceDir)) fs.mkdirSync(distServiceDir, { recursive: true });
+		copyDir(serviceDir, distServiceDir);
+		success('Copied Smart Hub Preview service');
+	}
+	
 	// Step 4: Copy resources
 	log('Copying resources...');
 	const distResources = path.join(DIST, 'resources');
