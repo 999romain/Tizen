@@ -265,7 +265,9 @@ async function main() {
 	// Step 7: Package WGT
 	log(`Packaging ${isSigned ? 'signed' : 'unsigned'} .wgt...`);
 	
-	const wgtName = 'Moonfin.wgt';
+	const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+	const version = pkg.version || '0.0.0';
+	const wgtName = `Moonfin-v${version}.wgt`;
 	
 	let packageCmd;
 	if (isSigned) {
@@ -325,7 +327,7 @@ async function main() {
 	}
 	
 	console.log('\n' + green('═'.repeat(50)));
-	console.log(green('  Build Complete!'));
+	console.log(green(`  Build Complete! (v${version})`));
 	console.log(green('═'.repeat(50)));
 	console.log(`\n  Output: ${cyan(finalWgt)}`);
 	
