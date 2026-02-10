@@ -79,6 +79,7 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, onB
 	const castScrollerRef = useRef(null);
 	const seasonsScrollerRef = useRef(null);
 	const pageScrollerRef = useRef(null);
+	const pageScrollToRef = useRef(null);
 
 	useEffect(() => {
 		const loadItem = async () => {
@@ -377,12 +378,27 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, onB
 		}
 	}, []);
 
-	// Scroll to top when button row receives focus
-	const handleButtonRowFocus = useCallback(() => {
+	// Scroll to top of page when button row receives focus to ensure content sections are visible
+	const scrollPageToTop = useCallback(() => {
+		if (pageScrollToRef.current) {
+			pageScrollToRef.current({align: 'top', animate: true});
+			return true;
+		}
 		const scroller = pageScrollerRef.current;
 		if (scroller && scroller.scrollTo) {
 			scroller.scrollTo({position: {y: 0}, animate: true});
+			return true;
 		}
+		return false;
+	}, []);
+
+	// Scroll to top when button row receives focus
+	const handleButtonRowFocus = useCallback(() => {
+		scrollPageToTop();
+	}, [scrollPageToTop]);
+
+	const handlePageScrollTo = useCallback((fn) => {
+		pageScrollToRef.current = fn;
 	}, []);
 
 	const handleKeyDown = useCallback((ev) => {
@@ -486,6 +502,7 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, onB
 
 			<Scroller
 				ref={pageScrollerRef}
+				cbScrollTo={handlePageScrollTo}
 				className={css.scroller}
 				direction="vertical"
 				horizontalScrollbar="hidden"
@@ -576,7 +593,7 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, onB
 					</div>
 
 					{!isPerson && !isBoxSet && (
-						<HorizontalContainer className={css.actionButtons} onKeyDown={handleButtonRowKeyDown}>
+				<HorizontalContainer className={css.actionButtons} onKeyDown={handleButtonRowKeyDown} onFocus={handleButtonRowFocus}>
 							{hasPlaybackPosition && (
 								<SpottableDiv className={css.btnWrapper} onClick={handleResume} spotlightId="details-primary-btn">
 									<div className={css.btnAction}>
