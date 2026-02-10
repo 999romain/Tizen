@@ -1144,6 +1144,15 @@ const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
 									</div>
 								</div>
 								<div className={css.serverItemActions} data-spotlight-container-disabled>
+									<SpottableButton
+										className={`${css.smallButton} ${isActive ? css.active : ''}`}
+										data-server-id={server.serverId}
+										data-user-id={server.userId}
+										onClick={isActive ? undefined : handleSwitchUserClick}
+										spotlightId={`switch-user-${index}`}
+									>
+										{isActive ? 'Active' : 'Switch'}
+									</SpottableButton>
 									{(servers.length > 1 || !isActive) && (
 										<SpottableButton
 											className={`${css.smallButton} ${css.dangerButton}`}
@@ -1156,20 +1165,6 @@ const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
 										>
 											Remove
 										</SpottableButton>
-									)}
-									{!isActive && (
-										<SpottableButton
-											className={css.smallButton}
-											data-server-id={server.serverId}
-											data-user-id={server.userId}
-											onClick={handleSwitchUserClick}
-											spotlightId={`switch-user-${index}`}
-										>
-											Switch
-										</SpottableButton>
-									)}
-									{isActive && (
-										<span className={css.activeLabel}>Active</span>
 									)}
 								</div>
 							</div>
