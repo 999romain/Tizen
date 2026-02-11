@@ -471,7 +471,7 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, bac
 		return () => { if (backHandlerRef) backHandlerRef.current = null; };
 	}, [backHandlerRef, activeModal, showMediaInfo, closeModal]);
 
-	const handleSectionKeyDown = useCallback((ev) => {
+const handleSectionKeyDown = useCallback((ev) => {
 		const currentSpottable = ev.target.closest('.spottable');
 		if (!currentSpottable) return;
 
@@ -489,29 +489,29 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, bac
 			ev.preventDefault();
 			ev.stopPropagation();
 			Spotlight.focus(allCards[targetIdx]);
-		} else if (ev.keyCode === 38) { // Up arrow
-			const container = currentSpottable.closest(`.${css.sectionsContainer}`);
-			if (!container) return;
+		} else if (ev.keyCode === 38) { // Up arrow 
+        const container = currentSpottable.closest(`.${css.sectionsContainer}`);
+        if (!container) return;
 
-			const currentRow = currentSpottable.closest(`.${css.section}`) || currentSpottable.closest('[data-row-index]');
-			if (!currentRow) return;
+        const currentRow = currentSpottable.closest(`.${css.section}`) || currentSpottable.closest('[data-row-index]') || currentSpottable.closest(`.${css.inlineRow}`);
+        if (!currentRow) return;
 
-			const allRows = Array.from(container.children);
-			const currentIndex = allRows.indexOf(currentRow);
+        const allRows = Array.from(container.children);
+        const currentIndex = allRows.indexOf(currentRow);
 
-			if (currentIndex <= 0) {
-				ev.preventDefault();
-				ev.stopPropagation();
-				Spotlight.focus('details-action-buttons');
-			} else {
-				const prevRow = allRows[currentIndex - 1];
-				const prevSpottable = prevRow.querySelector('.spottable');
-				if (prevSpottable) {
-					ev.preventDefault();
-					ev.stopPropagation();
-					Spotlight.focus(prevSpottable);
-				}
-			}
+        if (currentIndex <= 0) {
+            ev.preventDefault();
+            ev.stopPropagation();
+            Spotlight.focus('details-action-buttons');
+        } else {
+            const prevRow = allRows[currentIndex - 1];
+            const prevSpottable = prevRow.querySelector('.spottable');
+            if (prevSpottable) {
+                ev.preventDefault();
+                ev.stopPropagation();
+                Spotlight.focus(prevSpottable);
+            }
+        }
 		} else if (ev.keyCode === 40) { // Down arrow
 			const container = currentSpottable.closest(`.${css.sectionsContainer}`);
 			if (!container) return;
@@ -590,6 +590,7 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, bac
 			});
 		}
 	}, []);
+	
 
 	// === LOADING STATE ===
 
