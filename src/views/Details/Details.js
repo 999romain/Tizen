@@ -489,7 +489,7 @@ const handleSectionKeyDown = useCallback((ev) => {
 			ev.preventDefault();
 			ev.stopPropagation();
 			Spotlight.focus(allCards[targetIdx]);
-		} else if (ev.keyCode === 38) { // Up arrow 
+		} else if (ev.keyCode === 38) { // Up arrow
         const container = currentSpottable.closest(`.${css.sectionsContainer}`);
         if (!container) return;
 
@@ -590,7 +590,6 @@ const handleSectionKeyDown = useCallback((ev) => {
 			});
 		}
 	}, []);
-	
 
 	// === LOADING STATE ===
 
