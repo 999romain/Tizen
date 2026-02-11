@@ -8,7 +8,6 @@ import {useSettings} from '../../context/SettingsContext';
 import * as connectionPool from '../../services/connectionPool';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import {getImageUrl, getBackdropId} from '../../utils/helpers';
-import {isBackKey} from '../../utils/tizenKeys';
 
 import css from './Genres.module.less';
 
@@ -23,7 +22,7 @@ const SORT_OPTIONS = [
 	{key: 'random', label: 'Random'}
 ];
 
-const Genres = ({onSelectGenre, onBack}) => {
+const Genres = ({onSelectGenre, backHandlerRef}) => {
 	const {api, serverUrl, hasMultipleServers} = useAuth();
 	const {settings} = useSettings();
 	const unifiedMode = settings.unifiedLibraryMode && hasMultipleServers;
@@ -74,6 +73,7 @@ const Genres = ({onSelectGenre, onBack}) => {
 					genreList = await connectionPool.getGenresFromAllServers();
 
 					// Fetch a pool of random backdrop images from all servers
+					// This avoids per-genre API calls while still providing visuals
 					let backdropPool = [];
 					try {
 						const randomItems = await connectionPool.getRandomItemsFromAllServers('both', 30);
@@ -105,6 +105,7 @@ const Genres = ({onSelectGenre, onBack}) => {
 					const serverApi = connectionPool.getApiForItem(selectedLibrary);
 					if (serverApi) {
 						const result = await serverApi.getGenres(selectedLibrary.Id);
+						// Tag genres with server info so GenreBrowse can use the right API
 						genreList = (result.Items || []).map(g => ({
 							...g,
 							_serverUrl: selectedLibrary._serverUrl,
@@ -261,19 +262,17 @@ const Genres = ({onSelectGenre, onBack}) => {
 	}, []);
 
 	useEffect(() => {
-		const handleKeyDown = (e) => {
-			if (isBackKey(e)) {
-				if (showSortModal || showLibraryModal) {
-					setShowSortModal(false);
-					setShowLibraryModal(false);
-				} else {
-					onBack?.();
-				}
+		if (!backHandlerRef) return;
+		backHandlerRef.current = () => {
+			if (showSortModal || showLibraryModal) {
+				setShowSortModal(false);
+				setShowLibraryModal(false);
+				return true;
 			}
+			return false;
 		};
-		document.addEventListener('keydown', handleKeyDown);
-		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [showSortModal, showLibraryModal, onBack]);
+		return () => { if (backHandlerRef) backHandlerRef.current = null; };
+	}, [backHandlerRef, showSortModal, showLibraryModal]);
 
 	const handleSortSelect = useCallback((ev) => {
 		const key = ev.currentTarget?.dataset?.sortKey;
