@@ -9,7 +9,6 @@ import {useSettings} from '../../context/SettingsContext';
 import * as connectionPool from '../../services/connectionPool';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import {getImageUrl, getBackdropId, getPrimaryImageId} from '../../utils/helpers';
-import {isBackKey} from '../../utils/tizenKeys';
 
 import css from './GenreBrowse.module.less';
 
@@ -37,7 +36,7 @@ const LETTERS = ['#', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'
 
 const BACKDROP_DEBOUNCE_MS = 300;
 
-const GenreBrowse = ({genre, libraryId, onSelectItem, onBack}) => {
+const GenreBrowse = ({genre, libraryId, onSelectItem, backHandlerRef}) => {
 	const {api, serverUrl} = useAuth();
 	const {settings} = useSettings();
 	const [items, setItems] = useState([]);
@@ -128,10 +127,12 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, onBack}) => {
 				params.IncludeItemTypes = 'Movie,Series';
 			}
 
-			if (startLetter && startLetter !== '#') {
-				params.NameStartsWith = startLetter;
-			} else if (startLetter === '#') {
-				params.NameLessThan = 'A';
+			if (startLetter) {
+				if (startLetter === '#') {
+					params.NameLessThan = 'A';
+				} else {
+					params.NameStartsWith = startLetter;
+				}
 			}
 
 			let result;
@@ -264,24 +265,25 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, onBack}) => {
 	}, []);
 
 	useEffect(() => {
-		const handleKeyDown = (e) => {
-			if (isBackKey(e)) {
-				if (showSortModal || showFilterModal) {
-					setShowSortModal(false);
-					setShowFilterModal(false);
-				} else {
-					onBack?.();
-				}
+		if (!backHandlerRef) return;
+		backHandlerRef.current = () => {
+			if (showSortModal || showFilterModal) {
+				setShowSortModal(false);
+				setShowFilterModal(false);
+				return true;
 			}
+			return false;
 		};
-		document.addEventListener('keydown', handleKeyDown);
+		return () => { if (backHandlerRef) backHandlerRef.current = null; };
+	}, [backHandlerRef, showSortModal, showFilterModal]);
+
+	useEffect(() => {
 		return () => {
-			document.removeEventListener('keydown', handleKeyDown);
 			if (backdropTimeoutRef.current) {
 				clearTimeout(backdropTimeoutRef.current);
 			}
 		};
-	}, [showSortModal, showFilterModal, onBack]);
+	}, []);
 
 	const handleSortSelect = useCallback((ev) => {
 		const key = ev.currentTarget?.dataset?.sortKey;
@@ -381,10 +383,7 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, onBack}) => {
 						className={css.backdropImage}
 						src={backdropUrl}
 						alt=""
-						style={{
-							filter: settings.backdropBlurHome > 0 ? `blur(${settings.backdropBlurHome}px)` : 'none',
-							WebkitFilter: settings.backdropBlurHome > 0 ? `blur(${settings.backdropBlurHome}px)` : 'none'
-						}}
+						style={{filter: settings.backdropBlurHome > 0 ? `blur(${settings.backdropBlurHome}px)` : 'none'}}
 					/>
 				)}
 				<div className={css.backdropOverlay} />
@@ -435,7 +434,7 @@ const GenreBrowse = ({genre, libraryId, onSelectItem, onBack}) => {
 							</SpottableButton>
 						))}
 					</div>
-			</ToolbarContainer>
+				</ToolbarContainer>
 
 				<GridContainer className={css.gridContainer}>
 					{isLoading && items.length === 0 ? (

@@ -8,6 +8,7 @@ import LoadingSpinner from '../../components/LoadingSpinner';
 import {getImageUrl, getBackdropId, getLogoUrl} from '../../utils/helpers';
 import {getFromStorage, saveToStorage} from '../../services/storage';
 import * as connectionPool from '../../services/connectionPool';
+import RatingsRow from '../../components/RatingsRow';
 
 import css from './Browse.module.less';
 
@@ -32,13 +33,14 @@ let cacheTimestamp = null;
 
 let lastFocusState = null;
 
-const EXCLUDED_COLLECTION_TYPES = ['playlists', 'livetv', 'boxsets', 'books', 'music', 'musicvideos', 'homevideos', 'photos'];
+const EXCLUDED_COLLECTION_TYPES = ['playlists', 'livetv', 'boxsets', 'books', 'musicvideos', 'homevideos', 'photos'];
 
 const SpottableDiv = Spottable('div');
 const SpottableButton = Spottable('button');
 
 const Browse = ({
 	onSelectItem,
+	onSelectLibrary,
 	isVisible = true
 }) => {
 	const {api, serverUrl, accessToken, hasMultipleServers} = useAuth();
@@ -541,17 +543,20 @@ const Browse = ({
 				}
 
 				if (libs.length > 0) {
-					rowData.push({
-						id: 'library-tiles',
-						title: 'My Media',
-						items: libs.map(lib => ({
-							...lib,
-							Type: 'CollectionFolder',
-							isLibraryTile: true
-						})),
-						type: 'landscape',
-						isLibraryRow: true
-					});
+					const visibleLibs = libs.filter(lib => !EXCLUDED_COLLECTION_TYPES.includes(lib.CollectionType?.toLowerCase()));
+					if (visibleLibs.length > 0) {
+						rowData.push({
+							id: 'library-tiles',
+							title: 'My Media',
+							items: visibleLibs.map(lib => ({
+								...lib,
+								Type: 'CollectionFolder',
+								isLibraryTile: true
+							})),
+							type: 'landscape',
+							isLibraryRow: true
+						});
+					}
 				}
 
 				if (randomItems?.Items?.length > 0) {
@@ -631,7 +636,7 @@ const Browse = ({
 							title: `Latest in ${libraryTitle}`,
 							items: result.latest,
 							library: result.lib,
-							type: 'portrait',
+							type: result.lib.CollectionType?.toLowerCase() === 'music' ? 'square' : 'portrait',
 							isLatestRow: true
 						});
 					}
@@ -647,17 +652,20 @@ const Browse = ({
 				}
 
 				if (libs.length > 0) {
-					completeRowData.push({
-						id: 'library-tiles',
-						title: 'My Media',
-						items: libs.map(lib => ({
-							...lib,
-							Type: 'CollectionFolder',
-							isLibraryTile: true
-						})),
-						type: 'landscape',
-						isLibraryRow: true
-					});
+					const visibleLibs = libs.filter(lib => !EXCLUDED_COLLECTION_TYPES.includes(lib.CollectionType?.toLowerCase()));
+					if (visibleLibs.length > 0) {
+						completeRowData.push({
+							id: 'library-tiles',
+							title: 'My Media',
+							items: visibleLibs.map(lib => ({
+								...lib,
+								Type: 'CollectionFolder',
+								isLibraryTile: true
+							})),
+							type: 'landscape',
+							isLibraryRow: true
+						});
+					}
 				}
 
 				setAllRowData(completeRowData);
@@ -758,8 +766,12 @@ const Browse = ({
 				rowIndex: lastFocusedRowRef.current
 			};
 		}
-		onSelectItem?.(item);
-	}, [onSelectItem]);
+		if (item.isLibraryTile) {
+			onSelectLibrary?.(item);
+		} else {
+			onSelectItem?.(item);
+		}
+	}, [onSelectItem, onSelectLibrary]);
 
 	const handleFeaturedPrev = useCallback(() => {
 		if (featuredItems.length <= 1) return;
@@ -815,7 +827,9 @@ const Browse = ({
 		}
 		focusItemTimeoutRef.current = setTimeout(() => {
 			setFocusedItem(item);
-			if (!item.BackdropImageTags?.length && !item.ParentBackdropImageTags?.length) {
+			const needsBackdrop = !item.BackdropImageTags?.length && !item.ParentBackdropImageTags?.length;
+			const needsProviderIds = !item.ProviderIds;
+			if (needsBackdrop || needsProviderIds) {
 				api.getItem(item.Id).then(fullItem => {
 					setFocusedItem(fullItem);
 				}).catch(() => {});
@@ -946,6 +960,9 @@ const Browse = ({
 											<span key={i} className={css.metaItem}>{g}</span>
 										))}
 									</div>
+									{settings.useMoonfinPlugin && (
+										<RatingsRow item={currentFeatured} serverUrl={getItemServerUrl(currentFeatured)} compact />
+									)}
 									<p className={css.featuredOverview}>
 										{currentFeatured.Overview || 'No description available.'}
 									</p>
@@ -1002,6 +1019,9 @@ const Browse = ({
 									<span key={i} className={css.infoBadge}>{g}</span>
 								))}
 							</div>
+							{settings.useMoonfinPlugin && (
+								<RatingsRow item={focusedItem} serverUrl={getItemServerUrl(focusedItem)} compact />
+							)}
 							<p className={css.detailSummary}>
 								{focusedItem.Overview || 'No description available.'}
 							</p>

@@ -8,8 +8,16 @@ import Button from '@enact/sandstone/Button';
 import jellyseerrApi, {canRequestMovies, canRequestTv, canRequest4kMovies, canRequest4kTv, hasAdvancedRequestPermission} from '../../services/jellyseerrApi';
 import {useJellyseerr} from '../../context/JellyseerrContext';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import {isBackKey} from '../../utils/tizenKeys';
 import css from './JellyseerrDetails.module.less';
+
+const safeFocus = (spotlightId) => {
+	try {
+		return Spotlight.focus(spotlightId);
+	} catch (e) {
+		console.warn('[safeFocus] Failed to focus:', spotlightId, e.message);
+		return false;
+	}
+};
 
 const SpottableDiv = Spottable('div');
 const RowContainer = SpotlightContainerDecorator({
@@ -25,16 +33,6 @@ const KeywordsSectionContainer = SpotlightContainerDecorator({
 	enterTo: 'last-focused',
 	restrict: 'self-only'
 }, 'div');
-
-// Safe wrapper around Spotlight.focus to prevent crashes when DOM elements aren't ready
-const safeFocus = (spotlightId) => {
-	try {
-		return Spotlight.focus(spotlightId);
-	} catch (e) {
-		console.warn('Spotlight.focus failed for:', spotlightId, e.message);
-		return false;
-	}
-};
 
 const STATUS = {
 	UNKNOWN: 1,
@@ -639,7 +637,7 @@ const CancelRequestPopup = memo(({open, pendingRequests, title, onConfirm, onClo
 	);
 });
 
-const JellyseerrDetails = ({mediaType, mediaId, onClose, onSelectItem, onSelectPerson, onSelectKeyword, onBack}) => {
+const JellyseerrDetails = ({mediaType, mediaId, onClose, onSelectItem, onSelectPerson, onSelectKeyword, onBack, backHandlerRef}) => {
 	const {isAuthenticated, user: contextUser} = useJellyseerr();
 	const [details, setDetails] = useState(null);
 	const [loading, setLoading] = useState(true);
@@ -665,25 +663,16 @@ const JellyseerrDetails = ({mediaType, mediaId, onClose, onSelectItem, onSelectP
 	const handleCloseCancelPopup = useCallback(() => setShowCancelPopup(false), []);
 
 	useEffect(() => {
-		const handleKeyDown = (e) => {
-			if (isBackKey(e)) {
-				if (showAdvancedPopup) {
-					setShowAdvancedPopup(false);
-				} else if (showSeasonPopup) {
-					setShowSeasonPopup(false);
-				} else if (showQualityPopup) {
-					setShowQualityPopup(false);
-				} else if (showCancelPopup) {
-					setShowCancelPopup(false);
-				} else {
-					onClose?.();
-					onBack?.();
-				}
-			}
+		if (!backHandlerRef) return;
+		backHandlerRef.current = () => {
+			if (showAdvancedPopup) { setShowAdvancedPopup(false); return true; }
+			if (showSeasonPopup) { setShowSeasonPopup(false); return true; }
+			if (showQualityPopup) { setShowQualityPopup(false); return true; }
+			if (showCancelPopup) { setShowCancelPopup(false); return true; }
+			return false;
 		};
-		document.addEventListener('keydown', handleKeyDown);
-		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [onClose, onBack, showQualityPopup, showSeasonPopup, showAdvancedPopup, showCancelPopup]);
+		return () => { if (backHandlerRef) backHandlerRef.current = null; };
+	}, [backHandlerRef, showQualityPopup, showSeasonPopup, showAdvancedPopup, showCancelPopup]);
 
 	useEffect(() => {
 		if (!mediaId || !mediaType) return;
@@ -755,8 +744,7 @@ const JellyseerrDetails = ({mediaType, mediaId, onClose, onSelectItem, onSelectP
 		};
 
 		loadDetails();
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [mediaId, mediaType]);
+	}, [mediaId, mediaType, contextUser]);
 
 	useEffect(() => {
 		if (!loading && details) {
@@ -1279,7 +1267,7 @@ const JellyseerrDetails = ({mediaType, mediaId, onClose, onSelectItem, onSelectP
 					</div>
 				</div>
 
-				{/* Overview Section - 2 columns like Android TV */}
+				{/* Overview Section */}
 				<div className={css.overviewSection}>
 					{/* Left side - Overview text and action buttons */}
 					<div className={css.overviewLeft}>
@@ -1299,7 +1287,11 @@ const JellyseerrDetails = ({mediaType, mediaId, onClose, onSelectItem, onSelectP
 									onClick={handleRequestClick}
 									disabled={!canRequestAny}
 								>
-									<span className={css.btnIcon}>📥</span>
+									<span className={css.btnIcon}>
+									<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px">
+										<path d="M240-120v-80l40-40H160q-33 0-56.5-23.5T80-320v-440q0-33 23.5-56.5T160-840h640q33 0 56.5 23.5T880-760v440q0 33-23.5 56.5T800-240H680l40 40v80H240Zm-80-200h640v-440H160v440Zm0 0v-440 440Z"/>
+									</svg>
+								</span>
 								</SpottableDiv>
 								<span className={css.btnLabel}>{requestButtonLabel}</span>
 							</div>
@@ -1308,7 +1300,11 @@ const JellyseerrDetails = ({mediaType, mediaId, onClose, onSelectItem, onSelectP
 							{pendingRequests.length > 0 && (
 								<div className={css.btnWrapper}>
 									<SpottableDiv className={css.btnAction} onClick={handleCancelRequestClick}>
-										<span className={css.btnIcon}>🗑️</span>
+										<span className={css.btnIcon}>
+											<svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px">
+												<path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z"/>
+											</svg>
+										</span>
 									</SpottableDiv>
 									<span className={css.btnLabel}>Cancel Request</span>
 								</div>
