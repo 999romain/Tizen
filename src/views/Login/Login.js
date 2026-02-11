@@ -70,16 +70,16 @@ const Login = ({
 				if (users && users.length > 0) {
 					setStep('users');
 					setStatus(null);
-					setTimeout(() => Spotlight.focus('[data-spotlight-id="user-0"]'), 100);
+					setTimeout(() => Spotlight.focus('user-0'), 100);
 				} else {
 					setStep('manual');
 					setStatus(null);
-					setTimeout(() => Spotlight.focus('[data-spotlight-id="username-input"]'), 100);
+					setTimeout(() => Spotlight.focus('username-input'), 100);
 				}
 			} catch {
 				setStep('manual');
 				setStatus(null);
-				setTimeout(() => Spotlight.focus('[data-spotlight-id="username-input"]'), 100);
+				setTimeout(() => Spotlight.focus('username-input'), 100);
 			}
 		} catch (err) {
 			setError('Failed to connect to server. Check the address and try again.');
@@ -106,7 +106,7 @@ const Login = ({
 
 	useEffect(() => {
 		if (!isLoading && step === 'server') {
-			setTimeout(() => Spotlight.focus('[data-spotlight-id="server-input"]'), 100);
+			setTimeout(() => Spotlight.focus('server-input'), 100);
 		}
 	}, [isLoading, step]);
 
@@ -127,7 +127,7 @@ const Login = ({
 		setUsername(user.Name);
 		setPassword('');
 		setStep('password');
-		setTimeout(() => Spotlight.focus('[data-spotlight-id="password-input"]'), 100);
+		setTimeout(() => Spotlight.focus('use-password-btn'), 100);
 	}, []);
 
 	const handleLogin = useCallback(async () => {
@@ -172,14 +172,14 @@ const Login = ({
 			setStep('manual');
 			setQuickConnectCode('');
 			setQuickConnectSecret(null);
-			setTimeout(() => Spotlight.focus('[data-spotlight-id="username-input"]'), 100);
+			setTimeout(() => Spotlight.focus('username-input'), 100);
 		} else if (step === 'password' || step === 'passwordform' || step === 'quickconnect') {
 			setStep('users');
 			setSelectedUser(null);
 			setPassword('');
 			setQuickConnectCode('');
 			setQuickConnectSecret(null);
-			setTimeout(() => Spotlight.focus('[data-spotlight-id="user-0"]'), 100);
+			setTimeout(() => Spotlight.focus('user-0'), 100);
 		} else if (step === 'manual' || step === 'users') {
 			if (isAdding) {
 				cancelAddServerFlow?.();
@@ -189,7 +189,7 @@ const Login = ({
 			setStep('server');
 			setServerInfo(null);
 			setPublicUsers([]);
-			setTimeout(() => Spotlight.focus('[data-spotlight-id="server-input"]'), 100);
+			setTimeout(() => Spotlight.focus('server-input'), 100);
 		} else if (step === 'server' && isAdding) {
 			cancelAddServerFlow?.();
 			onServerAdded?.(null);
@@ -201,7 +201,7 @@ const Login = ({
 		setSelectedUser(null);
 		setUsername('');
 		setPassword('');
-		setTimeout(() => Spotlight.focus('[data-spotlight-id="username-input"]'), 100);
+		setTimeout(() => Spotlight.focus('username-input'), 100);
 	}, []);
 
 	const handleManualQuickConnect = useCallback(async () => {
@@ -245,7 +245,7 @@ const Login = ({
 			}, 3000);
 
 			setQuickConnectInterval(intervalId);
-			setTimeout(() => Spotlight.focus('[data-spotlight-id="qc-back-btn"]'), 100);
+			setTimeout(() => Spotlight.focus('qc-back-btn'), 100);
 		} catch (err) {
 			console.error('Quick Connect error:', err);
 			setError('Quick Connect is not available on this server. Use password login.');
@@ -298,7 +298,7 @@ const Login = ({
 			}, 3000);
 
 			setQuickConnectInterval(intervalId);
-			setTimeout(() => Spotlight.focus('[data-spotlight-id="qc-back-btn"]'), 100);
+			setTimeout(() => Spotlight.focus('qc-back-btn'), 100);
 		} catch (err) {
 			console.error('Quick Connect error:', err);
 			setError('Quick Connect failed. Try password login instead.');
@@ -317,7 +317,7 @@ const Login = ({
 		setQuickConnectSecret(null);
 		setStep('users');
 		setSelectedUser(null);
-		setTimeout(() => Spotlight.focus('[data-spotlight-id="user-0"]'), 100);
+		setTimeout(() => Spotlight.focus('user-0'), 100);
 	}, [quickConnectInterval]);
 
 	const handleServerInputKeyDown = useCallback((e) => {
@@ -352,13 +352,13 @@ const Login = ({
 
 	const handlePasswordMethodClick = useCallback(() => {
 		setStep('passwordform');
-		setTimeout(() => Spotlight.focus('[data-spotlight-id="password-input"]'), 100);
+		setTimeout(() => Spotlight.focus('password-input'), 100);
 	}, []);
 
 	const handlePasswordFormCancel = useCallback(() => {
 		setStep('password');
 		setPassword('');
-		setTimeout(() => Spotlight.focus('[data-spotlight-id="use-password-btn"]'), 100);
+		setTimeout(() => Spotlight.focus('use-password-btn'), 100);
 	}, []);
 
 	const handleUsePasswordInstead = useCallback(() => {
@@ -369,7 +369,7 @@ const Login = ({
 		setQuickConnectCode('');
 		setQuickConnectSecret(null);
 		setStep('passwordform');
-		setTimeout(() => Spotlight.focus('[data-spotlight-id="password-input"]'), 100);
+		setTimeout(() => Spotlight.focus('password-input'), 100);
 	}, [quickConnectInterval]);
 
 	useEffect(() => {
@@ -408,7 +408,7 @@ const Login = ({
 							<div className={css.formGroup}>
 								<label>Server Address</label>
 								<SpottableInput
-									data-spotlight-id="server-input"
+									spotlightId="server-input"
 									type="text"
 									className={css.input}
 									placeholder="192.168.1.100 or jellyfin.example.com"
@@ -419,7 +419,7 @@ const Login = ({
 								/>
 								<div className={css.buttonGroup}>
 									<SpottableButton
-										data-spotlight-id="connect-btn"
+										spotlightId="connect-btn"
 										className={`${css.btn} ${css.btnPrimary}`}
 										onClick={handleConnect}
 										disabled={isConnecting || !serverUrl.trim()}
@@ -428,7 +428,7 @@ const Login = ({
 									</SpottableButton>
 									{isAddingServer && (
 										<SpottableButton
-											data-spotlight-id="cancel-add-btn"
+											spotlightId="cancel-add-btn"
 											className={`${css.btn} ${css.btnSecondary}`}
 											onClick={handleBack}
 										>
@@ -448,7 +448,7 @@ const Login = ({
 								{publicUsers.map((user, index) => (
 									<SpottableDiv
 										key={user.Id}
-										data-spotlight-id={`user-${index}`}
+										spotlightId={`user-${index}`}
 										data-user-id={user.Id}
 										className={css.userCard}
 										onClick={handleUserCardClick}
@@ -471,14 +471,14 @@ const Login = ({
 							</div>
 							<div className={css.buttonGroup}>
 								<SpottableButton
-									data-spotlight-id="manual-login-btn"
+									spotlightId="manual-login-btn"
 									className={`${css.btn} ${css.btnSecondary}`}
 									onClick={handleManualLogin}
 								>
 									Manual Login
 								</SpottableButton>
 								<SpottableButton
-									data-spotlight-id="back-btn"
+									spotlightId="back-btn"
 									className={`${css.btn} ${css.btnSecondary}`}
 									onClick={handleBack}
 								>
@@ -507,14 +507,14 @@ const Login = ({
 							</div>
 							<div className={css.loginMethodButtons}>
 								<SpottableButton
-									data-spotlight-id="use-qc-btn"
+									spotlightId="use-qc-btn"
 									className={`${css.btn} ${css.btnPrimary}`}
 									onClick={handleQuickConnectClick}
 								>
 									Quick Connect
 								</SpottableButton>
 								<SpottableButton
-									data-spotlight-id="use-password-btn"
+									spotlightId="use-password-btn"
 									className={`${css.btn} ${css.btnSecondary}`}
 									onClick={handlePasswordMethodClick}
 								>
@@ -523,7 +523,7 @@ const Login = ({
 							</div>
 							<div className={css.buttonGroup}>
 								<SpottableButton
-									data-spotlight-id="password-back-btn"
+									spotlightId="password-back-btn"
 									className={`${css.btn} ${css.btnSecondary}`}
 									onClick={handleBack}
 								>
@@ -552,7 +552,7 @@ const Login = ({
 							</div>
 							<div className={css.formGroup}>
 								<SpottableInput
-									data-spotlight-id="password-input"
+									spotlightId="password-input"
 									type="password"
 									className={css.input}
 									placeholder="Password (leave empty if none)"
@@ -563,7 +563,7 @@ const Login = ({
 								/>
 								<div className={css.buttonGroup}>
 									<SpottableButton
-										data-spotlight-id="login-btn"
+										spotlightId="login-btn"
 										className={`${css.btn} ${css.btnPrimary}`}
 										onClick={handleLogin}
 										disabled={isConnecting}
@@ -571,7 +571,7 @@ const Login = ({
 										{isConnecting ? 'Signing in...' : 'Sign In'}
 									</SpottableButton>
 									<SpottableButton
-										data-spotlight-id="cancel-btn"
+										spotlightId="cancel-btn"
 										className={`${css.btn} ${css.btnSecondary}`}
 										onClick={handlePasswordFormCancel}
 									>
@@ -606,14 +606,14 @@ const Login = ({
 							</div>
 							<div className={css.buttonGroup}>
 								<SpottableButton
-									data-spotlight-id="use-password-instead-btn"
+									spotlightId="use-password-instead-btn"
 									className={`${css.btn} ${css.btnSecondary}`}
 									onClick={handleUsePasswordInstead}
 								>
 									Use Password Instead
 								</SpottableButton>
 								<SpottableButton
-									data-spotlight-id="qc-back-btn"
+									spotlightId="qc-back-btn"
 									className={`${css.btn} ${css.btnSecondary}`}
 									onClick={cancelQuickConnect}
 								>
@@ -630,7 +630,7 @@ const Login = ({
 							<div className={css.formGroup}>
 								<label>Username</label>
 								<SpottableInput
-									data-spotlight-id="username-input"
+									spotlightId="username-input"
 									type="text"
 									className={css.input}
 									placeholder="Username"
@@ -642,7 +642,7 @@ const Login = ({
 							<div className={css.formGroup}>
 								<label>Password</label>
 								<SpottableInput
-									data-spotlight-id="manual-password-input"
+									spotlightId="manual-password-input"
 									type="password"
 									className={css.input}
 									placeholder="Password"
@@ -655,7 +655,7 @@ const Login = ({
 							<div className={css.buttonGroup}>
 								{username.trim() ? (
 									<SpottableButton
-										data-spotlight-id="manual-submit-btn"
+										spotlightId="manual-submit-btn"
 										className={`${css.btn} ${css.btnPrimary}`}
 										onClick={handleLogin}
 										disabled={isConnecting}
@@ -664,7 +664,7 @@ const Login = ({
 									</SpottableButton>
 								) : (
 									<SpottableButton
-										data-spotlight-id="manual-qc-btn"
+										spotlightId="manual-qc-btn"
 										className={`${css.btn} ${css.btnPrimary}`}
 										onClick={handleManualQuickConnect}
 										disabled={isConnecting}
@@ -673,7 +673,7 @@ const Login = ({
 									</SpottableButton>
 								)}
 								<SpottableButton
-									data-spotlight-id="manual-back-btn"
+									spotlightId="manual-back-btn"
 									className={`${css.btn} ${css.btnSecondary}`}
 									onClick={handleBack}
 								>
@@ -694,7 +694,7 @@ const Login = ({
 							</div>
 							<div className={css.buttonGroup}>
 								<SpottableButton
-									data-spotlight-id="qc-back-btn"
+									spotlightId="qc-back-btn"
 									className={`${css.btn} ${css.btnSecondary}`}
 									onClick={handleBack}
 								>
