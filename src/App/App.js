@@ -14,6 +14,7 @@ import {
 	cleanupVideoElement
 } from '../services/tizenVideo';
 import {initSmartHub} from '../services/smarthub';
+
 import {SettingsProvider} from '../context/SettingsContext';
 import {JellyseerrProvider} from '../context/JellyseerrContext';
 import {useVersionCheck} from '../hooks/useVersionCheck';
@@ -94,6 +95,9 @@ const AppContent = (props) => {
 	const [authChecked, setAuthChecked] = useState(false);
 	const [libraries, setLibraries] = useState([]);
 	const cleanupHandlersRef = useRef(null);
+	const backHandlerRef = useRef(null);
+	const detailsItemStackRef = useRef([]);
+	const jellyseerrItemStackRef = useRef([]);
 
 	useEffect(() => {
 		const fetchLibraries = async () => {
@@ -271,6 +275,8 @@ const AppContent = (props) => {
 	}, []);
 
 	const handleBack = useCallback(() => {
+		detailsItemStackRef.current = [];
+		jellyseerrItemStackRef.current = [];
 		if (panelIndex === PANELS.ADD_SERVER || panelIndex === PANELS.ADD_USER) {
 			setPanelHistory([]);
 			setPanelIndex(PANELS.SETTINGS);
@@ -290,32 +296,32 @@ const AppContent = (props) => {
 			if (e.keyCode === 8 && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
 				return;
 			}
-						// Handle back button (10009 = Tizen BACK, 27 = Escape, 8 = Backspace)
+			// Handle back button (10009 = Tizen BACK, 27 = Escape, 8 = Backspace)
 			if (isBackKey(e)) {
 				e.preventDefault();
+				e.stopPropagation();
 
-				if (panelIndex === PANELS.LOGIN) {
-					return;
-				}
-				// On home screen, exit the app
-				if (panelIndex === PANELS.BROWSE) {
+				if (panelIndex === PANELS.BROWSE || panelIndex === PANELS.LOGIN) {
+					// At root level let the platform handle back (closes/minimizes app)
+					performAppCleanup();
 					if (typeof tizen !== 'undefined' && tizen.application) {
-						if (isTizen() && typeof window.runSmartViewUpdate === 'function') {
-							window.runSmartViewUpdate().then(function () {
-								tizen.application.getCurrentApplication().exit();
-							}).catch(function () {
-								tizen.application.getCurrentApplication().exit();
-							});
-						} else {
-							tizen.application.getCurrentApplication().exit();
-						}
+						tizen.application.getCurrentApplication().exit();
 					}
 					return;
 				}
 				if (panelIndex === PANELS.PLAYER || panelIndex === PANELS.SETTINGS) {
 					return;
 				}
-				e.stopPropagation();
+				if (backHandlerRef.current?.()) return;
+				// Pop item stack for same-panel back navigation
+				if (panelIndex === PANELS.DETAILS && detailsItemStackRef.current.length > 0) {
+					setSelectedItem(detailsItemStackRef.current.pop());
+					return;
+				}
+				if (panelIndex === PANELS.JELLYSEERR_DETAILS && jellyseerrItemStackRef.current.length > 0) {
+					setJellyseerrItem(jellyseerrItemStackRef.current.pop());
+					return;
+				}
 				handleBack();
 			}
 			// Handle Tizen Exit key - update Smart Hub then close app
@@ -336,7 +342,7 @@ const AppContent = (props) => {
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [panelIndex, handleBack]);
+	}, [panelIndex, handleBack, performAppCleanup]);
 
 	const handleLoggedIn = useCallback(() => {
 		setPanelHistory([]);
@@ -375,9 +381,15 @@ const AppContent = (props) => {
 	}, [api, navigateTo, settings.shuffleContentType, unifiedMode]);
 
 	const handleSelectItem = useCallback((item) => {
-		setSelectedItem(item);
-		navigateTo(PANELS.DETAILS);
-	}, [navigateTo]);
+		if (panelIndex === PANELS.DETAILS && selectedItem) {
+			detailsItemStackRef.current.push(selectedItem);
+			setSelectedItem(item);
+		} else {
+			detailsItemStackRef.current = [];
+			setSelectedItem(item);
+			navigateTo(PANELS.DETAILS);
+		}
+	}, [navigateTo, panelIndex, selectedItem]);
 
 	const handleSelectLibrary = useCallback((library) => {
 		// Check if this is a Live TV library - redirect to Live TV view
@@ -390,15 +402,18 @@ const AppContent = (props) => {
 	}, [navigateTo]);
 
 	const [playbackOptions, setPlaybackOptions] = useState(null);
+	const [isResume, setIsResume] = useState(false);
 
 	const handlePlay = useCallback((item, resume, options) => {
 		setPlayingItem(item);
 		setPlaybackOptions(options || null);
+		setIsResume(!!resume);
 		navigateTo(PANELS.PLAYER);
 	}, [navigateTo]);
 
 	const handlePlayNext = useCallback((item) => {
 		setPlayingItem(item);
+		setIsResume(false);
 	}, []);
 
 	const handlePlayerEnd = useCallback(() => {
@@ -495,9 +510,15 @@ const AppContent = (props) => {
 	}, []);
 
 	const handleSelectJellyseerrItem = useCallback((item) => {
-		setJellyseerrItem(item);
-		navigateTo(PANELS.JELLYSEERR_DETAILS);
-	}, [navigateTo]);
+		if (panelIndex === PANELS.JELLYSEERR_DETAILS && jellyseerrItem) {
+			jellyseerrItemStackRef.current.push(jellyseerrItem);
+			setJellyseerrItem(item);
+		} else {
+			jellyseerrItemStackRef.current = [];
+			setJellyseerrItem(item);
+			navigateTo(PANELS.JELLYSEERR_DETAILS);
+		}
+	}, [navigateTo, panelIndex, jellyseerrItem]);
 
 	const handleSelectJellyseerrGenre = useCallback((genreId, genreName, mediaType) => {
 		setJellyseerrBrowse({browseType: 'genre', item: {id: genreId, name: genreName}, mediaType});
@@ -588,8 +609,8 @@ const AppContent = (props) => {
 								onPlay={handlePlay}
 								onSelectItem={handleSelectItem}
 								onSelectPerson={handleSelectPerson}
-								onBack={handleBack}
-							/>
+							backHandlerRef={backHandlerRef}
+						/>
 						)}
 					</Panel>
 					<Panel>
@@ -597,13 +618,13 @@ const AppContent = (props) => {
 							<Library
 								library={selectedLibrary}
 								onSelectItem={handleSelectItem}
-								onBack={handleBack}
-							/>
+							backHandlerRef={backHandlerRef}
+						/>
 						)}
 					</Panel>
 					<Panel>
 						{panelIndex === PANELS.SEARCH && (
-							<Search onSelectItem={handleSelectItem} onSelectPerson={handleSelectPerson} onBack={handleBack} />
+							<Search onSelectItem={handleSelectItem} onSelectPerson={handleSelectPerson} />
 						)}
 					</Panel>
 					<Panel>
@@ -615,6 +636,7 @@ const AppContent = (props) => {
 						{panelIndex === PANELS.PLAYER && playingItem && (
 							<Player
 								item={playingItem}
+								resume={isResume}
 								initialAudioIndex={playbackOptions?.audioStreamIndex}
 								initialSubtitleIndex={playbackOptions?.subtitleStreamIndex}
 								onEnded={handlePlayerEnd}
@@ -625,22 +647,22 @@ const AppContent = (props) => {
 					</Panel>
 					<Panel>
 						{panelIndex === PANELS.FAVORITES && (
-							<Favorites onSelectItem={handleSelectItem} onBack={handleBack} />
+							<Favorites onSelectItem={handleSelectItem} />
 						)}
 					</Panel>
 					<Panel>
 						{panelIndex === PANELS.GENRES && (
-							<Genres onSelectGenre={handleSelectGenre} onBack={handleBack} />
+							<Genres onSelectGenre={handleSelectGenre} backHandlerRef={backHandlerRef} />
 						)}
 					</Panel>
 					<Panel>
 						{panelIndex === PANELS.PERSON && (
-							<Person personId={selectedPerson?.Id} onSelectItem={handleSelectItem} onBack={handleBack} />
+							<Person personId={selectedPerson?.Id} onSelectItem={handleSelectItem} />
 						)}
 					</Panel>
 					<Panel>
 						{panelIndex === PANELS.LIVETV && (
-							<LiveTV onPlayChannel={handlePlayChannel} onRecordings={handleOpenRecordings} onBack={handleBack} />
+							<LiveTV onPlayChannel={handlePlayChannel} onRecordings={handleOpenRecordings} backHandlerRef={backHandlerRef} />
 						)}
 					</Panel>
 					<Panel>
@@ -651,7 +673,7 @@ const AppContent = (props) => {
 								onSelectStudio={handleSelectJellyseerrStudio}
 								onSelectNetwork={handleSelectJellyseerrNetwork}
 								onOpenRequests={handleOpenJellyseerrRequests}
-								onBack={handleBack}
+
 							/>
 						)}
 					</Panel>
@@ -663,8 +685,10 @@ const AppContent = (props) => {
 								onSelectItem={handleSelectJellyseerrItem}
 								onSelectPerson={handleSelectJellyseerrPerson}
 								onSelectKeyword={handleSelectJellyseerrKeyword}
-								onClose={handleBack}
-							/>
+							onClose={handleBack}
+							onBack={handleBack}
+							backHandlerRef={backHandlerRef}
+						/>
 						)}
 					</Panel>
 					<Panel>
@@ -681,13 +705,13 @@ const AppContent = (props) => {
 								genre={selectedGenre}
 								libraryId={selectedGenreLibraryId}
 								onSelectItem={handleSelectItem}
-								onBack={handleBack}
-							/>
+							backHandlerRef={backHandlerRef}
+						/>
 						)}
 					</Panel>
 					<Panel>
 						{panelIndex === PANELS.RECORDINGS && (
-							<Recordings onPlayRecording={handlePlayRecording} onBack={handleBack} />
+							<Recordings onPlayRecording={handlePlayRecording} backHandlerRef={backHandlerRef} />
 						)}
 					</Panel>
 					<Panel>
@@ -697,8 +721,8 @@ const AppContent = (props) => {
 								item={jellyseerrBrowse?.item}
 								mediaType={jellyseerrBrowse?.mediaType}
 								onSelectItem={handleSelectJellyseerrItem}
-								onBack={handleBack}
-							/>
+							backHandlerRef={backHandlerRef}
+						/>
 						)}
 					</Panel>
 					<Panel>
