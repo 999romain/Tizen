@@ -103,9 +103,10 @@ const determinePlayMethod = (mediaSource, capabilities) => {
 	return PlayMethod.Transcode;
 };
 
-const buildPlaybackUrl = (itemId, mediaSource, playSessionId, playMethod, credentials = null) => {
+const buildPlaybackUrl = (itemId, mediaSource, playSessionId, playMethod, credentials = null, isAudio = false) => {
 	const serverUrl = credentials?.serverUrl || jellyfinApi.getServerUrl();
 	const apiKey = credentials?.accessToken || jellyfinApi.getApiKey();
+	const streamType = isAudio ? 'Audio' : 'Videos';
 
 	console.log('[playback] buildPlaybackUrl:', {
 		itemId,
@@ -115,7 +116,8 @@ const buildPlaybackUrl = (itemId, mediaSource, playSessionId, playMethod, creden
 		serverUrl,
 		apiKeyType: typeof apiKey,
 		apiKeyLength: apiKey?.length,
-		isCrossServer: !!credentials
+		isCrossServer: !!credentials,
+		isAudio
 	});
 
 	if (playMethod === PlayMethod.DirectPlay) {
@@ -123,7 +125,7 @@ const buildPlaybackUrl = (itemId, mediaSource, playSessionId, playMethod, creden
 		params.append('Static', 'true');
 		params.append('MediaSourceId', mediaSource.Id);
 		params.append('api_key', apiKey);
-		const url = `${serverUrl}/Videos/${itemId}/stream?${params.toString()}`;
+		const url = `${serverUrl}/${streamType}/${itemId}/stream?${params.toString()}`;
 		console.log('[playback] DirectPlay URL:', url);
 		return url;
 	}
@@ -135,6 +137,15 @@ const buildPlaybackUrl = (itemId, mediaSource, playSessionId, playMethod, creden
 				: `${serverUrl}${mediaSource.DirectStreamUrl}`;
 			return url.includes('api_key') ? url : `${url}&api_key=${apiKey}`;
 		}
+		// Fallback: construct DirectStream URL manually (e.g. for audio)
+		const container = mediaSource.Container || '';
+		const params = new URLSearchParams();
+		params.append('Static', 'true');
+		params.append('MediaSourceId', mediaSource.Id);
+		params.append('api_key', apiKey);
+		const url = `${serverUrl}/${streamType}/${itemId}/stream.${container}?${params.toString()}`;
+		console.log('[playback] DirectStream fallback URL:', url);
+		return url;
 	}
 
 	if (mediaSource.TranscodingUrl) {
@@ -282,7 +293,8 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 	}
 
 	const playMethod = determinePlayMethod(mediaSource, capabilities);
-	const url = buildPlaybackUrl(itemId, mediaSource, playbackInfo.PlaySessionId, playMethod, creds);
+	const isAudio = options.item?.MediaType === 'Audio' || options.item?.Type === 'Audio';
+	const url = buildPlaybackUrl(itemId, mediaSource, playbackInfo.PlaySessionId, playMethod, creds, isAudio);
 	const audioStreams = extractAudioStreams(mediaSource);
 	const subtitleStreams = extractSubtitleStreams(mediaSource, creds);
 	const chapters = extractChapters(mediaSource);
@@ -310,6 +322,8 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 			mimeType = 'application/x-mpegURL';
 		} else if (url.includes('.ts') || mediaSource.TranscodingContainer === 'ts') {
 			mimeType = 'video/mp2t';
+		} else if (isAudio) {
+			mimeType = getMimeType(mediaSource.TranscodingContainer || 'mp3');
 		} else {
 			mimeType = 'video/mp4';
 		}
@@ -324,6 +338,7 @@ export const getPlaybackInfo = async (itemId, options = {}) => {
 		mediaSource,
 		playMethod,
 		mimeType,
+		isAudio,
 		runTimeTicks: mediaSource.RunTimeTicks,
 		audioStreams,
 		subtitleStreams,

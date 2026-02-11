@@ -179,7 +179,8 @@
 	cursor: pointer;
 	transition: transform 0.3s ease;
 	border-radius: 8px;
-	overflow: hidden;
+	overflow: visible;
+	transform-origin: center center;
 
 	&:focus {
 		outline: none;
@@ -202,7 +203,7 @@
 	width: 100%;
 	padding-top: 150%;
 	background: rgba(255, 255, 255, 0.1);
-	overflow: hidden;
+	overflow: visible;
 	border-radius: 8px;
 }
 
@@ -253,6 +254,7 @@
 	white-space: nowrap;
 }
 
+/* Server Badge for unified mode */
 .serverBadge {
 	position: absolute;
 	top: 8px;
@@ -290,5 +292,12 @@
 
 	.personImage {
 		border-radius: 50%;
+	}
+}
+
+/* Music Card (Albums, Artists, Songs) - Square aspect ratio */
+.musicCard {
+	.musicImageWrapper {
+		padding-top: 100%; /* 1:1 square aspect ratio */
 	}
 }

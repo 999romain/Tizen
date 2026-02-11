@@ -40,6 +40,9 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 		shows: [],
 		episodes: [],
 		people: [],
+		albums: [],
+		artists: [],
+		songs: [],
 		jellyseerr: []
 	});
 	const [displayCounts, setDisplayCounts] = useState({
@@ -47,6 +50,9 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 		shows: ITEMS_PER_PAGE,
 		episodes: ITEMS_PER_PAGE,
 		people: ITEMS_PER_PAGE,
+		albums: ITEMS_PER_PAGE,
+		artists: ITEMS_PER_PAGE,
+		songs: ITEMS_PER_PAGE,
 		jellyseerr: ITEMS_PER_PAGE
 	});
 	const debounceRef = useRef(null);
@@ -57,6 +63,9 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 			results.shows.length > 0 ||
 			results.episodes.length > 0 ||
 			results.people.length > 0 ||
+			results.albums.length > 0 ||
+			results.artists.length > 0 ||
+			results.songs.length > 0 ||
 			results.jellyseerr.length > 0;
 	}, [results]);
 
@@ -70,6 +79,9 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 		if (results.movies.length > 0) rows.push({id: 'movies', title: 'Movies', items: getVisibleItems(results.movies, 'movies'), totalCount: results.movies.length, type: 'jellyfin'});
 		if (results.shows.length > 0) rows.push({id: 'shows', title: 'TV Shows', items: getVisibleItems(results.shows, 'shows'), totalCount: results.shows.length, type: 'jellyfin'});
 		if (results.episodes.length > 0) rows.push({id: 'episodes', title: 'Episodes', items: getVisibleItems(results.episodes, 'episodes'), totalCount: results.episodes.length, type: 'jellyfin'});
+		if (results.artists.length > 0) rows.push({id: 'artists', title: 'Artists', items: getVisibleItems(results.artists, 'artists'), totalCount: results.artists.length, type: 'jellyfin'});
+		if (results.albums.length > 0) rows.push({id: 'albums', title: 'Albums', items: getVisibleItems(results.albums, 'albums'), totalCount: results.albums.length, type: 'jellyfin'});
+		if (results.songs.length > 0) rows.push({id: 'songs', title: 'Songs', items: getVisibleItems(results.songs, 'songs'), totalCount: results.songs.length, type: 'jellyfin'});
 		if (results.people.length > 0) rows.push({id: 'people', title: 'People', items: getVisibleItems(results.people, 'people'), totalCount: results.people.length, type: 'jellyfin'});
 		if (results.jellyseerr.length > 0) rows.push({id: 'jellyseerr', title: 'Jellyseerr', items: getVisibleItems(results.jellyseerr, 'jellyseerr'), totalCount: results.jellyseerr.length, type: 'jellyseerr'});
 		return rows;
@@ -84,12 +96,15 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 
 	const doSearch = useCallback(async (searchQuery) => {
 		if (!searchQuery || searchQuery.length < MIN_SEARCH_LENGTH) {
-			setResults({movies: [], shows: [], episodes: [], people: [], jellyseerr: []});
+			setResults({movies: [], shows: [], episodes: [], people: [], albums: [], artists: [], songs: [], jellyseerr: []});
 			setDisplayCounts({
 				movies: ITEMS_PER_PAGE,
 				shows: ITEMS_PER_PAGE,
 				episodes: ITEMS_PER_PAGE,
 				people: ITEMS_PER_PAGE,
+				albums: ITEMS_PER_PAGE,
+				artists: ITEMS_PER_PAGE,
+				songs: ITEMS_PER_PAGE,
 				jellyseerr: ITEMS_PER_PAGE
 			});
 			return;
@@ -101,6 +116,9 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 			shows: ITEMS_PER_PAGE,
 			episodes: ITEMS_PER_PAGE,
 			people: ITEMS_PER_PAGE,
+			albums: ITEMS_PER_PAGE,
+			artists: ITEMS_PER_PAGE,
+			songs: ITEMS_PER_PAGE,
 			jellyseerr: ITEMS_PER_PAGE
 		});
 
@@ -119,6 +137,9 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 				shows: items.filter(item => item.Type === 'Series'),
 				episodes: items.filter(item => item.Type === 'Episode'),
 				people: items.filter(item => item.Type === 'Person'),
+				albums: items.filter(item => item.Type === 'MusicAlbum'),
+				artists: items.filter(item => item.Type === 'MusicArtist'),
+				songs: items.filter(item => item.Type === 'Audio'),
 				jellyseerr: []
 			};
 
@@ -137,7 +158,7 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 			}
 		} catch (err) {
 			console.error('Search failed:', err);
-			setResults({movies: [], shows: [], episodes: [], people: [], jellyseerr: []});
+			setResults({movies: [], shows: [], episodes: [], people: [], albums: [], artists: [], songs: [], jellyseerr: []});
 		} finally {
 			setIsLoading(false);
 		}
@@ -209,7 +230,7 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 				});
 			}
 		} else {
-			const allItems = [...results.movies, ...results.shows, ...results.episodes, ...results.people];
+			const allItems = [...results.movies, ...results.shows, ...results.episodes, ...results.people, ...results.albums, ...results.artists, ...results.songs];
 			const item = allItems.find(i => i.Id === itemId);
 			if (item) {
 				if (item.Type === 'Person') {
@@ -300,16 +321,29 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 	const renderJellyfinCard = useCallback((item, index, rowId) => {
 		const isPerson = item.Type === 'Person';
 		const isEpisode = item.Type === 'Episode';
+		const isAlbum = item.Type === 'MusicAlbum';
+		const isArtist = item.Type === 'MusicArtist';
+		const isSong = item.Type === 'Audio';
 		const hasImage = item.ImageTags?.Primary || item.PrimaryImageTag;
 		// Support cross-server items with their own server URL
 		const itemServerUrl = item._serverUrl || serverUrl;
-		const imageUrl = hasImage ? getImageUrl(itemServerUrl, item.Id, 'Primary') : null;
+		// For songs without their own image, use album art
+		let imageUrl = hasImage ? getImageUrl(itemServerUrl, item.Id, 'Primary') : null;
+		if (!imageUrl && isSong && item.AlbumId && item.AlbumPrimaryImageTag) {
+			imageUrl = getImageUrl(itemServerUrl, item.AlbumId, 'Primary');
+		}
 
 		let subtitle = '';
 		if (isEpisode) {
 			subtitle = `${item.SeriesName || ''} S${item.ParentIndexNumber || '?'}E${item.IndexNumber || '?'}`;
 		} else if (isPerson) {
 			subtitle = 'Person';
+		} else if (isAlbum) {
+			subtitle = item.AlbumArtist || item.ProductionYear || '';
+		} else if (isArtist) {
+			subtitle = 'Artist';
+		} else if (isSong) {
+			subtitle = item.AlbumArtist || item.Artists?.[0] || item.Album || '';
 		} else {
 			subtitle = item.ProductionYear || '';
 		}
@@ -317,20 +351,20 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 		return (
 			<SpottableDiv
 				key={item.Id}
-				className={`${css.card} ${isPerson ? css.personCard : ''} ${isEpisode ? css.episodeCard : ''}`}
+				className={`${css.card} ${isPerson ? css.personCard : ''} ${isEpisode ? css.episodeCard : ''} ${isAlbum || isArtist || isSong ? css.musicCard : ''}`}
 				onClick={handleCardClick}
 				data-item-id={item.Id}
 				data-item-type="jellyfin"
 				spotlightId={`${rowId}-item-${index}`}
 			>
-				<div className={`${css.cardImageWrapper} ${isPerson ? css.personImageWrapper : ''} ${isEpisode ? css.episodeImageWrapper : ''}`}>
+				<div className={`${css.cardImageWrapper} ${isPerson ? css.personImageWrapper : ''} ${isEpisode ? css.episodeImageWrapper : ''} ${isAlbum || isArtist || isSong ? css.musicImageWrapper : ''}`}>
 					{unifiedMode && item._serverName && (
 						<div className={css.serverBadge}>{item._serverName}</div>
 					)}
 					{imageUrl ? (
 						<img className={`${css.cardImage} ${isPerson ? css.personImage : ''}`} src={imageUrl} alt={item.Name} />
 					) : (
-						<div className={css.cardPlaceholder}>{isPerson ? '👤' : '🎬'}</div>
+						<div className={css.cardPlaceholder}>{isPerson ? '👤' : isAlbum || isSong ? '🎵' : isArtist ? '🎤' : '🎬'}</div>
 					)}
 				</div>
 				<div className={css.cardInfo}>
@@ -349,7 +383,7 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 					<SpottableInput
 						type="text"
 						className={css.searchInput}
-						placeholder="Search movies, shows, episodes, and people..."
+						placeholder="Search movies, shows, music, and more..."
 						value={query}
 						onChange={handleInputChange}
 						onKeyDown={handleInputKeyDown}
@@ -374,7 +408,7 @@ const Search = ({onSelectItem, onSelectPerson}) => {
 					<div className={css.emptyState}>
 						<SearchIcon />
 						<h2>Search for content</h2>
-						<p>Find movies, TV shows, episodes, and cast members</p>
+						<p>Find movies, TV shows, music, and more</p>
 					</div>
 				) : !hasResults ? (
 					<div className={css.noResults}>
