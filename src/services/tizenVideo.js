@@ -166,7 +166,9 @@ export const getPlayMethod = (mediaSource, capabilities) => {
 		return !codec || supportedAudioCodecs.includes(codec);
 	});
 
-	const supportedContainers = ['mp4', 'm4v', 'mov', 'ts', 'mpegts', 'mkv', 'matroska', 'webm', 'avi'];
+	const supportedContainers = ['mp4', 'm4v', 'mov', 'ts', 'mpegts', 'mkv', 'matroska', 'webm', 'avi',
+		// Audio containers
+		'mp3', 'flac', 'aac', 'm4a', 'm4b', 'ogg', 'oga', 'opus', 'wav', 'wma', 'weba'];
 	if (capabilities.nativeHls) supportedContainers.push('m3u8');
 
 	const videoOk = !videoCodec || supportedVideoCodecs.includes(videoCodec);
@@ -250,7 +252,19 @@ export const getMimeType = (container) => {
 		avi: 'video/x-msvideo',
 		mov: 'video/quicktime',
 		m3u8: 'application/x-mpegURL',
-		mpd: 'application/dash+xml'
+		mpd: 'application/dash+xml',
+		// Audio formats
+		mp3: 'audio/mpeg',
+		flac: 'audio/flac',
+		aac: 'audio/aac',
+		m4a: 'audio/mp4',
+		m4b: 'audio/mp4',
+		ogg: 'audio/ogg',
+		oga: 'audio/ogg',
+		opus: 'audio/ogg',
+		wav: 'audio/wav',
+		wma: 'audio/x-ms-wma',
+		webma: 'audio/webm'
 	};
 	return mimeTypes[container?.toLowerCase()] || 'video/mp4';
 };
@@ -402,6 +416,18 @@ export const avplaySetSpeed = (speed) => {
 export const avplaySetDrm = (drmType, operation, drmData) => {
 	if (!isAVPlayAvailable) return;
 	webapis.avplay.setDrm(drmType, operation, drmData);
+};
+
+export const avplayGetTracks = () => {
+	if (!isAVPlayAvailable) return [];
+	try {
+		const trackInfo = webapis.avplay.getTotalTrackInfo();
+		console.log('[tizenVideo] Track Info:', JSON.stringify(trackInfo));
+		return trackInfo;
+	} catch (e) {
+		console.warn('[tizenVideo] Failed to get track info:', e);
+		return [];
+	}
 };
 
 export const avplaySelectTrack = (type, index) => {
@@ -585,5 +611,6 @@ export default {
 	avplaySetSpeed,
 	avplaySetDrm,
 	avplaySelectTrack,
-	avplaySetSilentSubtitle
+	avplaySetSilentSubtitle,
+	avplayGetTracks
 };

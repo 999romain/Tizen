@@ -7,7 +7,6 @@ import {useJellyseerr} from '../../context/JellyseerrContext';
 import {useSettings} from '../../context/SettingsContext';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import * as jellyseerrApi from '../../services/jellyseerrApi';
-import {isBackKey} from '../../utils/tizenKeys';
 
 import css from './JellyseerrBrowse.module.less';
 
@@ -32,7 +31,7 @@ const MAX_PAGES = 25;
  * @param {Function} props.onSelectItem - Callback when an item is selected
  * @param {Function} props.onBack - Callback to go back
  */
-const JellyseerrBrowse = ({browseType, item, mediaType: initialMediaType, onSelectItem, onBack}) => {
+const JellyseerrBrowse = ({browseType, item, mediaType: initialMediaType, onSelectItem, backHandlerRef}) => {
 	const {isEnabled} = useJellyseerr();
 	const {settings} = useSettings();
 	const [items, setItems] = useState([]);
@@ -111,9 +110,7 @@ const JellyseerrBrowse = ({browseType, item, mediaType: initialMediaType, onSele
 			loadingMoreRef.current = false;
 			if (append) {
 				loadCooldownRef.current = true;
-				setTimeout(() => {
-					loadCooldownRef.current = false;
-				}, 500);
+				setTimeout(() => { loadCooldownRef.current = false; }, 500);
 			}
 		}
 	}, [item, isEnabled, browseType, mediaType]);
@@ -135,8 +132,7 @@ const JellyseerrBrowse = ({browseType, item, mediaType: initialMediaType, onSele
 			};
 			loadInitialPages();
 		}
-	// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [item, isEnabled, mediaType]);
+	}, [item, isEnabled, mediaType, loadItems]);
 
 	const updateBackdrop = useCallback((ev) => {
 		const itemIndex = ev.currentTarget?.dataset?.index;
@@ -181,23 +177,24 @@ const JellyseerrBrowse = ({browseType, item, mediaType: initialMediaType, onSele
 	}, []);
 
 	useEffect(() => {
-		const handleKeyDown = (e) => {
-			if (isBackKey(e)) {
-				if (showFilterModal) {
-					setShowFilterModal(false);
-				} else {
-					onBack?.();
-				}
+		if (!backHandlerRef) return;
+		backHandlerRef.current = () => {
+			if (showFilterModal) {
+				setShowFilterModal(false);
+				return true;
 			}
+			return false;
 		};
-		document.addEventListener('keydown', handleKeyDown);
+		return () => { if (backHandlerRef) backHandlerRef.current = null; };
+	}, [backHandlerRef, showFilterModal]);
+
+	useEffect(() => {
 		return () => {
-			document.removeEventListener('keydown', handleKeyDown);
 			if (backdropTimeoutRef.current) {
 				clearTimeout(backdropTimeoutRef.current);
 			}
 		};
-	}, [showFilterModal, onBack]);
+	}, []);
 
 	const handleFilterSelect = useCallback((ev) => {
 		const key = ev.currentTarget?.dataset?.filterKey;
@@ -253,11 +250,13 @@ const JellyseerrBrowse = ({browseType, item, mediaType: initialMediaType, onSele
 							</svg>
 						</div>
 					)}
+					{/* Media type badge - top left */}
 					{itemMediaType && (
 						<div className={`${css.mediaTypeBadge} ${itemMediaType === 'movie' ? css.movieBadge : css.seriesBadge}`}>
 							{itemMediaType === 'movie' ? 'MOVIE' : 'SERIES'}
 						</div>
 					)}
+					{/* Availability badge - top right */}
 					{status && [3, 4, 5].includes(status) && (
 						<div className={`${css.availabilityBadge} ${css[`availability${status}`]}`} />
 					)}
@@ -311,10 +310,7 @@ const JellyseerrBrowse = ({browseType, item, mediaType: initialMediaType, onSele
 						className={css.backdropImage}
 						src={backdropUrl}
 						alt=""
-						style={{
-							filter: settings.backdropBlurHome > 0 ? `blur(${settings.backdropBlurHome}px)` : 'none',
-							WebkitFilter: settings.backdropBlurHome > 0 ? `blur(${settings.backdropBlurHome}px)` : 'none'
-						}}
+						style={{filter: settings.backdropBlurHome > 0 ? `blur(${settings.backdropBlurHome}px)` : 'none'}}
 					/>
 				)}
 				<div className={css.backdropOverlay} />

@@ -11,6 +11,7 @@ import {useJellyseerr} from '../../context/JellyseerrContext';
 import {useDeviceInfo} from '../../hooks/useDeviceInfo';
 import JellyseerrIcon from '../../components/icons/JellyseerrIcon';
 import serverLogger from '../../services/serverLogger';
+import connectionPool from '../../services/connectionPool';
 import {isBackKey} from '../../utils/tizenKeys';
 
 import css from './Settings.module.less';
@@ -40,12 +41,6 @@ const IconDisplay = () => (
 	</svg>
 );
 
-const IconAccount = () => (
-	<svg viewBox="0 0 24 24" fill="currentColor">
-		<path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-	</svg>
-);
-
 const IconAbout = () => (
 	<svg viewBox="0 0 24 24" fill="currentColor">
 		<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
@@ -57,7 +52,6 @@ const CATEGORIES = [
 	{id: 'playback', label: 'Playback', Icon: IconPlayback},
 	{id: 'display', label: 'Display', Icon: IconDisplay},
 	{id: 'jellyseerr', label: 'Jellyseerr', Icon: JellyseerrIcon},
-	{id: 'account', label: 'Account', Icon: IconAccount},
 	{id: 'about', label: 'About', Icon: IconAbout}
 ];
 
@@ -170,21 +164,13 @@ const UI_COLOR_OPTIONS = [
 	{value: 'brown', label: 'Brown', rgb: '50, 35, 25'}
 ];
 
-const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
+const Settings = ({onBack, onLibrariesChanged}) => {
 	const {
 		user,
+		api,
 		serverUrl,
-		serverName,
-		logout,
-		logoutAll,
 		accessToken,
-		servers,
-		activeServerInfo,
-		switchUser,
-		removeUser,
-		hasMultipleUsers,
 		hasMultipleServers,
-		startAddServerFlow
 	} = useAuth();
 	const {settings, updateSetting} = useSettings();
 	const {capabilities} = useDeviceInfo();
@@ -194,8 +180,13 @@ const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
 	const [showHomeRowsModal, setShowHomeRowsModal] = useState(false);
 	const [tempHomeRows, setTempHomeRows] = useState([]);
 
-	const [showConfirmRemoveModal, setShowConfirmRemoveModal] = useState(false);
-	const [serverToRemove, setServerToRemove] = useState(null);
+	// Library visibility
+	const [showLibraryModal, setShowLibraryModal] = useState(false);
+	const [allLibraries, setAllLibraries] = useState([]);
+	const [hiddenLibraries, setHiddenLibraries] = useState([]);
+	const [libraryLoading, setLibraryLoading] = useState(false);
+	const [librarySaving, setLibrarySaving] = useState(false);
+	const [serverConfigs, setServerConfigs] = useState([]);
 
 	const [jellyseerrUrl, setJellyseerrUrl] = useState(jellyseerr.serverUrl || '');
 	const [jellyseerrStatus, setJellyseerrStatus] = useState('');
@@ -276,63 +267,6 @@ const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
 			}
 		}
 	}, [activeCategory]);
-
-	const handleLogout = useCallback(async () => {
-		await logout();
-		onLogout?.();
-	}, [logout, onLogout]);
-
-	const handleLogoutAll = useCallback(async () => {
-		await logoutAll();
-		onLogout?.();
-	}, [logoutAll, onLogout]);
-
-	const handleAddUser = useCallback(() => {
-		onAddUser?.();
-	}, [onAddUser]);
-
-	const handleAddServer = useCallback(() => {
-		startAddServerFlow();
-		onAddServer?.();
-	}, [startAddServerFlow, onAddServer]);
-
-	const handleSwitchUser = useCallback(async (serverId, userId) => {
-		await switchUser(serverId, userId);
-	}, [switchUser]);
-
-	const handleSwitchUserClick = useCallback((e) => {
-		const serverId = e.currentTarget.dataset.serverId;
-		const userId = e.currentTarget.dataset.userId;
-		if (serverId && userId) {
-			handleSwitchUser(serverId, userId);
-		}
-	}, [handleSwitchUser]);
-
-	const handleRemoveUserClick = useCallback((e) => {
-		const serverId = e.currentTarget.dataset.serverId;
-		const userId = e.currentTarget.dataset.userId;
-		const username = e.currentTarget.dataset.username;
-		const userServerName = e.currentTarget.dataset.serverName;
-		if (serverId && userId) {
-			setServerToRemove({serverId, userId, username, serverName: userServerName});
-			setShowConfirmRemoveModal(true);
-		}
-	}, []);
-
-	const handleConfirmRemove = useCallback(async () => {
-		if (!serverToRemove) return;
-
-		const success = await removeUser(serverToRemove.serverId, serverToRemove.userId);
-		if (success) {
-			setShowConfirmRemoveModal(false);
-			setServerToRemove(null);
-		}
-	}, [serverToRemove, removeUser]);
-
-	const handleCancelRemove = useCallback(() => {
-		setShowConfirmRemoveModal(false);
-		setServerToRemove(null);
-	}, []);
 
 	const toggleSetting = useCallback((key) => {
 		const newValue = !settings[key];
@@ -540,6 +474,114 @@ const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
 		if (rowId) moveHomeRowDown(rowId);
 	}, [moveHomeRowDown]);
 
+	// Library visibility handlers
+	const openLibraryModal = useCallback(async () => {
+		setShowLibraryModal(true);
+		setLibraryLoading(true);
+		try {
+			const isUnified = settings.unifiedLibraryMode && hasMultipleServers;
+			if (isUnified) {
+				const [allLibs, configs] = await Promise.all([
+					connectionPool.getAllLibrariesFromAllServers(),
+					connectionPool.getUserConfigFromAllServers()
+				]);
+				const libs = allLibs.filter(lib => lib.CollectionType);
+				setAllLibraries(libs);
+				setServerConfigs(configs);
+				const allExcludes = configs.reduce((acc, cfg) => {
+					return acc.concat(cfg.configuration?.MyMediaExcludes || []);
+				}, []);
+				setHiddenLibraries([...new Set(allExcludes)]);
+			} else {
+				const [viewsResult, userData] = await Promise.all([
+					api.getAllLibraries(),
+					api.getUserConfiguration()
+				]);
+				const libs = (viewsResult.Items || []).filter(lib => lib.CollectionType);
+				setAllLibraries(libs);
+				setHiddenLibraries([...(userData.Configuration?.MyMediaExcludes || [])]);
+			}
+		} catch (err) {
+			console.error('Failed to load libraries:', err);
+		} finally {
+			setLibraryLoading(false);
+		}
+	}, [api, settings.unifiedLibraryMode, hasMultipleServers]);
+
+	const closeLibraryModal = useCallback(() => {
+		setShowLibraryModal(false);
+		setAllLibraries([]);
+		setHiddenLibraries([]);
+		setServerConfigs([]);
+	}, []);
+
+	const toggleLibraryVisibility = useCallback((libraryId) => {
+		setHiddenLibraries(prev => {
+			if (prev.includes(libraryId)) {
+				return prev.filter(id => id !== libraryId);
+			}
+			return [...prev, libraryId];
+		});
+	}, []);
+
+	const handleLibraryToggleClick = useCallback((e) => {
+		const libId = e.currentTarget.dataset.libraryId;
+		if (libId) toggleLibraryVisibility(libId);
+	}, [toggleLibraryVisibility]);
+
+	const saveLibraryVisibility = useCallback(async () => {
+		setLibrarySaving(true);
+		try {
+			const isUnified = settings.unifiedLibraryMode && hasMultipleServers;
+			if (isUnified) {
+				// Group hidden library IDs by their server
+				const serverExcludes = {};
+				for (const lib of allLibraries) {
+					const key = lib._serverUrl;
+					if (!serverExcludes[key]) {
+						serverExcludes[key] = [];
+					}
+					if (hiddenLibraries.includes(lib.Id)) {
+						serverExcludes[key].push(lib.Id);
+					}
+				}
+				// Save to each server
+				const savePromises = serverConfigs.map(cfg => {
+					const excludes = serverExcludes[cfg.serverUrl] || [];
+					const updatedConfig = {
+						...cfg.configuration,
+						MyMediaExcludes: excludes
+					};
+					return connectionPool.updateUserConfigOnServer(
+						cfg.serverUrl,
+						cfg.accessToken,
+						cfg.userId,
+						updatedConfig
+					);
+				});
+				await Promise.all(savePromises);
+			} else {
+				const userData = await api.getUserConfiguration();
+				const updatedConfig = {
+					...userData.Configuration,
+					MyMediaExcludes: hiddenLibraries
+				};
+				await api.updateUserConfiguration(updatedConfig);
+			}
+			setShowLibraryModal(false);
+			setAllLibraries([]);
+			setHiddenLibraries([]);
+			setServerConfigs([]);
+			onLibrariesChanged?.();
+			window.dispatchEvent(new window.Event('moonfin:browseRefresh'));
+		} catch (err) {
+			console.error('Failed to save library visibility:', err);
+		} finally {
+			setLibrarySaving(false);
+		}
+	}, [api, hiddenLibraries, allLibraries, serverConfigs, settings.unifiedLibraryMode, hasMultipleServers, onLibrariesChanged]);
+
+
 	const handleApiKeyInputChange = useCallback((e) => {
 		setApiKeyInput(e.target.value);
 	}, []);
@@ -712,6 +754,7 @@ const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
 					() => updateSetting('clockDisplay', settings.clockDisplay === '12-hour' ? '24-hour' : '12-hour'),
 					'setting-clockDisplay'
 				)}
+				{renderToggleItem('Auto Login', 'Automatically sign in on app launch', 'autoLogin')}
 			</div>
 			<div className={css.settingsGroup}>
 				<h2>Navigation Bar</h2>
@@ -734,6 +777,12 @@ const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
 				{renderToggleItem('Merge Continue Watching & Next Up', 'Combine into a single row', 'mergeContinueWatchingNextUp')}
 				{renderSettingItem('Configure Home Rows', 'Customize which rows appear on home screen',
 					'Edit...', openHomeRowsModal, 'setting-homeRows'
+				)}
+			</div>
+			<div className={css.settingsGroup}>
+				<h2>Libraries</h2>
+				{renderSettingItem('Hide Libraries', 'Choose which libraries to hide (syncs across all Jellyfin clients)',
+					'Edit...', openLibraryModal, 'setting-hideLibraries'
 				)}
 			</div>
 			<div className={css.settingsGroup}>
@@ -1085,130 +1134,6 @@ const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
 		</div>
 	);
 
-	const renderAccountPanel = () => (
-		<div className={css.panel}>
-			<h1>Account Settings</h1>
-
-			<div className={css.settingsGroup}>
-				<h2>Current User</h2>
-				<div className={css.currentUserCard}>
-					{user?.PrimaryImageTag ? (
-						<img
-							src={`${serverUrl}/Users/${user.Id}/Images/Primary?tag=${user.PrimaryImageTag}&quality=90&maxHeight=150`}
-							alt={user?.Name}
-							className={css.userAvatarImage}
-						/>
-					) : (
-						<div className={css.userAvatar}>
-							{user?.Name?.charAt(0)?.toUpperCase() || '?'}
-						</div>
-					)}
-					<div className={css.userDetails}>
-						<div className={css.userName}>{user?.Name || 'Not logged in'}</div>
-						<div className={css.serverInfo}>
-							{serverName && <span className={css.serverName}>{serverName}</span>}
-							<span className={css.serverUrl}>{serverUrl || 'Not connected'}</span>
-						</div>
-					</div>
-				</div>
-			</div>
-
-			<div className={css.settingsGroup}>
-				<h2>Servers & Users {hasMultipleUsers && `(${servers.length})`}</h2>
-				<div className={css.serverList}>
-					{servers.map((server, index) => {
-						const isActive = activeServerInfo?.serverId === server.serverId &&
-							activeServerInfo?.userId === server.userId;
-						return (
-							<div
-								key={`${server.serverId}-${server.userId}`}
-								className={`${css.serverItem} ${isActive ? css.activeServer : ''}`}
-							>
-								<div className={css.serverItemInfo}>
-									<div className={css.serverItemUser}>
-										{isActive && user?.PrimaryImageTag ? (
-											<img
-												src={`${server.url}/Users/${server.userId}/Images/Primary?tag=${user.PrimaryImageTag}&quality=90&maxHeight=100`}
-												alt={server.username}
-												className={css.serverItemAvatarImage}
-											/>
-										) : (
-											<span className={css.serverItemAvatar}>
-												{server.username?.charAt(0)?.toUpperCase() || '?'}
-											</span>
-										)}
-										<span className={css.serverItemUsername}>{server.username}</span>
-									</div>
-									<div className={css.serverItemServer}>
-										{server.name} ({new URL(server.url).hostname})
-									</div>
-								</div>
-								<div className={css.serverItemActions} data-spotlight-container-disabled>
-									<SpottableButton
-										className={`${css.smallButton} ${isActive ? css.active : ''}`}
-										data-server-id={server.serverId}
-										data-user-id={server.userId}
-										onClick={isActive ? undefined : handleSwitchUserClick}
-										spotlightId={`switch-user-${index}`}
-									>
-										{isActive ? 'Active' : 'Switch'}
-									</SpottableButton>
-									{(servers.length > 1 || !isActive) && (
-										<SpottableButton
-											className={`${css.smallButton} ${css.dangerButton}`}
-											data-server-id={server.serverId}
-											data-user-id={server.userId}
-											data-server-name={server.name}
-											data-username={server.username}
-											onClick={handleRemoveUserClick}
-											spotlightId={`remove-user-${index}`}
-										>
-											Remove
-										</SpottableButton>
-									)}
-								</div>
-							</div>
-						);
-					})}
-				</div>
-				<SpottableButton
-					className={css.addServerButton}
-					onClick={handleAddUser}
-					spotlightId="add-user-button"
-				>
-					+ Add User
-				</SpottableButton>
-				<SpottableButton
-					className={css.addServerButton}
-					onClick={handleAddServer}
-					spotlightId="add-server-button"
-				>
-					Change Server
-				</SpottableButton>
-			</div>
-
-			<div className={css.settingsGroup}>
-				<h2>Actions</h2>
-				<SpottableButton
-					className={css.actionButton}
-					onClick={handleLogout}
-					spotlightId="logout-button"
-				>
-					Sign Out Current User
-				</SpottableButton>
-				{hasMultipleUsers && (
-					<SpottableButton
-						className={`${css.actionButton} ${css.dangerButton}`}
-						onClick={handleLogoutAll}
-						spotlightId="logout-all-button"
-					>
-						Sign Out All Users
-					</SpottableButton>
-				)}
-			</div>
-		</div>
-	);
-
 	const renderAboutPanel = () => (
 		<div className={css.panel}>
 			<h1>About</h1>
@@ -1374,47 +1299,64 @@ const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
 		);
 	};
 
-	const renderConfirmRemoveModal = () => {
-		if (!serverToRemove) return null;
+	const isUnifiedModal = settings.unifiedLibraryMode && hasMultipleServers;
 
-		return (
-			<Popup
-				open={showConfirmRemoveModal}
-				onClose={handleCancelRemove}
-				position="center"
-				scrimType="translucent"
-				noAutoDismiss
-			>
-				<div className={css.popupContent}>
-					<h2 className={css.popupTitle}>Remove User</h2>
-					<p className={css.popupDescription}>
-						Are you sure you want to remove <strong>{serverToRemove.username}</strong> from
-						<strong> {serverToRemove.serverName}</strong>?
-					</p>
-					<p className={css.popupWarning}>
-						You will need to sign in again to use this account.
-					</p>
-					<div className={css.popupButtons}>
-						<Button
-							onClick={handleCancelRemove}
-							size="small"
-							spotlightId="cancel-remove"
-						>
-							Cancel
-						</Button>
-						<Button
-							onClick={handleConfirmRemove}
-							size="small"
-							className={css.dangerButton}
-							spotlightId="confirm-remove"
-						>
-							Remove
-						</Button>
+	const renderLibraryModal = () => (
+		<Popup
+			open={showLibraryModal}
+			onClose={closeLibraryModal}
+			position="center"
+			scrimType="translucent"
+			noAutoDismiss
+		>
+			<div className={css.popupContent}>
+				<h2 className={css.popupTitle}>Hide Libraries</h2>
+				<p className={css.popupDescription}>
+					Hidden libraries are removed from all Jellyfin clients. This is a server-level setting.
+				</p>
+				{libraryLoading ? (
+					<div className={css.libraryListLoading}>Loading libraries...</div>
+				) : (
+					<div className={css.homeRowsList}>
+						{allLibraries.map(lib => {
+							const isHidden = hiddenLibraries.includes(lib.Id);
+							return (
+								<div key={`${lib._serverUrl || 'local'}-${lib.Id}`} className={css.homeRowItem}>
+									<Button
+										className={css.homeRowToggle}
+										onClick={handleLibraryToggleClick}
+										data-library-id={lib.Id}
+										size="small"
+									>
+										<span className={css.checkbox}>{isHidden ? '☐' : '☑'}</span>
+										<span className={css.homeRowName}>
+											{lib.Name}{isUnifiedModal && lib._serverName ? ` (${lib._serverName})` : ''}
+										</span>
+									</Button>
+								</div>
+							);
+						})}
 					</div>
+				)}
+				<div className={css.popupButtons}>
+					<Button
+						onClick={closeLibraryModal}
+						size="small"
+					>
+						Cancel
+					</Button>
+					<Button
+						onClick={saveLibraryVisibility}
+						size="small"
+						className={css.primaryButton}
+						disabled={librarySaving}
+					>
+						{librarySaving ? 'Saving...' : 'Save'}
+					</Button>
 				</div>
-			</Popup>
-		);
-	};
+			</div>
+		</Popup>
+	);
 
 	const renderPanel = () => {
 		switch (activeCategory) {
@@ -1422,7 +1364,6 @@ const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
 			case 'playback': return renderPlaybackPanel();
 			case 'display': return renderDisplayPanel();
 			case 'jellyseerr': return renderJellyseerrPanel();
-			case 'account': return renderAccountPanel();
 			case 'about': return renderAboutPanel();
 			default: return renderGeneralPanel();
 		}
@@ -1458,8 +1399,8 @@ const Settings = ({onBack, onLogout, onAddServer, onAddUser}) => {
 				{renderPanel()}
 			</ContentContainer>
 
+			{renderLibraryModal()}
 			{renderHomeRowsModal()}
-			{renderConfirmRemoveModal()}
 		</div>
 	);
 };

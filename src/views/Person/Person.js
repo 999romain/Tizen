@@ -6,27 +6,17 @@ import Image from '@enact/sandstone/Image';
 import {useAuth} from '../../context/AuthContext';
 import MediaCard from '../../components/MediaCard';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import {isBackKey, TIZEN_KEYS} from '../../utils/tizenKeys';
 
 import css from './Person.module.less';
+import { TIZEN_KEYS } from '../../utils/tizenKeys';
 
 const GridContainer = SpotlightContainerDecorator({enterTo: 'last-focused', restrict: 'self-only'}, 'div');
 
-const Person = ({personId, onSelectItem, onBack}) => {
+const Person = ({personId, onSelectItem}) => {
 	const {api, serverUrl} = useAuth();
 	const [person, setPerson] = useState(null);
 	const [items, setItems] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
-
-	useEffect(() => {
-		const handleKeyDown = (e) => {
-			if (isBackKey(e)) {
-				onBack?.();
-			}
-		};
-		document.addEventListener('keydown', handleKeyDown);
-		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [onBack]);
 
 	useEffect(() => {
 		const loadPerson = async () => {
@@ -54,7 +44,7 @@ const Person = ({personId, onSelectItem, onBack}) => {
 	}, [onSelectItem]);
 
 	const handleGridKeyDown = useCallback((e) => {
-		 if (e.keyCode === TIZEN_KEYS.UP) {
+		if (e.keyCode === TIZEN_KEYS.UP) {
 			const grid = document.querySelector(`.${css.grid}`);
 			if (grid) {
 				const scrollTop = grid.scrollTop || 0;

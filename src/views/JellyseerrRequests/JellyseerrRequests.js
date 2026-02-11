@@ -12,7 +12,6 @@ import Spotlight from '@enact/spotlight';
 import Spottable from '@enact/spotlight/Spottable';
 import jellyseerrApi from '../../services/jellyseerrApi';
 import {useJellyseerr} from '../../context/JellyseerrContext';
-import {isBackKey} from '../../utils/tizenKeys';
 import css from './JellyseerrRequests.module.less';
 
 const SpottableRow = Spottable('div');
@@ -102,16 +101,6 @@ const JellyseerrRequests = ({onSelectItem, onClose, ...rest}) => {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
 	const [filter, setFilter] = useState('all');
-
-	useEffect(() => {
-		const handleKeyDown = (e) => {
-			if (isBackKey(e)) {
-				onClose?.();
-			}
-		};
-		document.addEventListener('keydown', handleKeyDown);
-		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [onClose]);
 
 	const loadRequests = useCallback(async () => {
 		if (!isAuthenticated) return;

@@ -5,9 +5,11 @@ import Spotlight from '@enact/spotlight';
 import Button from '@enact/sandstone/Button';
 import Scroller from '@enact/sandstone/Scroller';
 import * as playback from '../../services/playback';
-import {initTizenAPI, registerAppStateObserver, keepScreenOn, cleanupVideoElement, avplaySelectTrack, avplaySetSilentSubtitle} from '../../services/tizenVideo';
+import {initTizenAPI, registerAppStateObserver, keepScreenOn, cleanupVideoElement, avplaySelectTrack, avplaySetSilentSubtitle, avplayGetTracks} from '../../services/tizenVideo';
 import {useSettings} from '../../context/SettingsContext';
 import {TIZEN_KEYS, isBackKey} from '../../utils/tizenKeys';
+import {getImageUrl} from '../../utils/helpers';
+import {getServerUrl} from '../../services/jellyfinApi';
 import TrickplayPreview from '../../components/TrickplayPreview';
 import SubtitleOffsetOverlay from './SubtitleOffsetOverlay';
 import SubtitleSettingsOverlay from './SubtitleSettingsOverlay';
@@ -135,7 +137,7 @@ const IconInfo = () => (
 	</svg>
 );
 
-const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSubtitleIndex}) => {
+const Player = ({item, initialAudioIndex, initialSubtitleIndex, onEnded, onBack, onPlayNext, audioPlaylist}) => {
 	const {settings} = useSettings();
 
 	const [mediaUrl, setMediaUrl] = useState(null);
@@ -171,6 +173,15 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 	const [mediaSourceId, setMediaSourceId] = useState(null);
 	const [hasTriedTranscode, setHasTriedTranscode] = useState(false);
 	const [focusRow, setFocusRow] = useState('top');
+	const [isAudioMode, setIsAudioMode] = useState(false);
+
+	// Audio playlist tracking
+	const audioPlaylistIndex = useMemo(() => {
+		if (!audioPlaylist || !item) return -1;
+		return audioPlaylist.findIndex(t => t.Id === item.Id);
+	}, [audioPlaylist, item]);
+	const hasNextTrack = audioPlaylist && audioPlaylistIndex >= 0 && audioPlaylistIndex < audioPlaylist.length - 1;
+	const hasPrevTrack = audioPlaylist && audioPlaylistIndex > 0;
 
 	const videoRef = useRef(null);
 	const positionRef = useRef(0);
@@ -182,22 +193,41 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 	const unregisterAppStateRef = useRef(null);
 	const controlsTimeoutRef = useRef(null);
 
-	const topButtons = useMemo(() => [
-		{id: 'playPause', icon: isPaused ? <IconPlay /> : <IconPause />, label: isPaused ? 'Play' : 'Pause', action: 'playPause'},
-		{id: 'rewind', icon: <IconRewind />, label: 'Rewind', action: 'rewind'},
-		{id: 'forward', icon: <IconForward />, label: 'Forward', action: 'forward'},
-		{id: 'audio', icon: <IconAudio />, label: 'Audio', action: 'audio', disabled: audioStreams.length === 0},
-		{id: 'subtitle', icon: <IconSubtitle />, label: 'Subtitles', action: 'subtitle', disabled: subtitleStreams.length === 0}
-	], [isPaused, audioStreams.length, subtitleStreams.length]);
+	const topButtons = useMemo(() => {
+		const buttons = [
+			{id: 'playPause', icon: isPaused ? <IconPlay /> : <IconPause />, label: isPaused ? 'Play' : 'Pause', action: 'playPause'}
+		];
+		if (isAudioMode) {
+			buttons.unshift(
+				{id: 'previous', icon: <IconPrevious />, label: 'Previous', action: 'prevTrack', disabled: !hasPrevTrack}
+			);
+			buttons.push(
+				{id: 'next', icon: <IconNext />, label: 'Next', action: 'nextTrack', disabled: !hasNextTrack}
+			);
+		} else {
+			buttons.push(
+				{id: 'rewind', icon: <IconRewind />, label: 'Rewind', action: 'rewind'},
+				{id: 'forward', icon: <IconForward />, label: 'Forward', action: 'forward'},
+				{id: 'audio', icon: <IconAudio />, label: 'Audio', action: 'audio', disabled: audioStreams.length === 0},
+				{id: 'subtitle', icon: <IconSubtitle />, label: 'Subtitles', action: 'subtitle', disabled: subtitleStreams.length === 0}
+			);
+		}
+		return buttons;
+	}, [isPaused, audioStreams.length, subtitleStreams.length, isAudioMode, hasNextTrack, hasPrevTrack]);
 
-	const bottomButtons = useMemo(() => [
-		{id: 'chapters', icon: <IconChapters />, label: 'Chapters', action: 'chapter', disabled: chapters.length === 0},
-		{id: 'previous', icon: <IconPrevious />, label: 'Previous', action: 'previous', disabled: true},
-		{id: 'next', icon: <IconNext />, label: 'Next', action: 'next', disabled: !nextEpisode},
-		{id: 'speed', icon: <IconSpeed />, label: 'Speed', action: 'speed'},
-		{id: 'quality', icon: <IconQuality />, label: 'Quality', action: 'quality'},
-		{id: 'info', icon: <IconInfo />, label: 'Info', action: 'info'}
-	], [chapters.length, nextEpisode]);
+	const bottomButtons = useMemo(() => {
+		if (isAudioMode) {
+			return [];
+		}
+		return [
+			{id: 'chapters', icon: <IconChapters />, label: 'Chapters', action: 'chapter', disabled: chapters.length === 0},
+			{id: 'previous', icon: <IconPrevious />, label: 'Previous', action: 'previous', disabled: true},
+			{id: 'next', icon: <IconNext />, label: 'Next', action: 'next', disabled: !nextEpisode},
+			{id: 'speed', icon: <IconSpeed />, label: 'Speed', action: 'speed'},
+			{id: 'quality', icon: <IconQuality />, label: 'Quality', action: 'quality'},
+			{id: 'info', icon: <IconInfo />, label: 'Info', action: 'info'}
+		];
+	}, [chapters.length, nextEpisode, isAudioMode]);
 
 	useEffect(() => {
 		const init = async () => {
@@ -339,22 +369,29 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 				if (item.SeriesName) {
 					displayTitle = item.SeriesName;
 					displaySubtitle = `S${item.ParentIndexNumber}E${item.IndexNumber} - ${item.Name}`;
+					} else if (result.isAudio) {
+					displayTitle = item.Name;
+					displaySubtitle = item.AlbumArtist || item.Artists?.[0] || item.Album || '';
 				}
 				setTitle(displayTitle);
 				setSubtitle(displaySubtitle);
+				setIsAudioMode(!!result.isAudio);
 
-				// Load media segments (intro/credits markers)
-				if (settings.skipIntro) {
-					const segments = await playback.getMediaSegments(item.Id);
-					setMediaSegments(segments);
+				// Audio mode: always show controls, skip video-only features
+				if (result.isAudio) {
+					setControlsVisible(true);
+				} else {
+					if (settings.skipIntro) {
+						const segments = await playback.getMediaSegments(item.Id);
+						setMediaSegments(segments);
+					}
+
+					// Load next episode for TV shows
+					if (item.Type === 'Episode') {
+						const next = await playback.getNextEpisode(item);
+						setNextEpisode(next);
+					}
 				}
-
-				// Load next episode for TV shows
-				if (item.Type === 'Episode') {
-					const next = await playback.getNextEpisode(item);
-					setNextEpisode(next);
-				}
-
 				console.log(`[Player] Loaded ${displayTitle} via ${result.playMethod}`);
 			} catch (err) {
 				console.error('[Player] Failed to load media:', err);
@@ -394,12 +431,15 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 		if (controlsTimeoutRef.current) {
 			clearTimeout(controlsTimeoutRef.current);
 		}
-		controlsTimeoutRef.current = setTimeout(() => {
-			if (!activeModal) {
-				setControlsVisible(false);
-			}
-		}, CONTROLS_HIDE_DELAY);
-	}, [activeModal]);
+		// Don't auto-hide controls in audio mode
+		if (!isAudioMode) {
+			controlsTimeoutRef.current = setTimeout(() => {
+				if (!activeModal) {
+					setControlsVisible(false);
+				}
+			}, CONTROLS_HIDE_DELAY);
+		}
+	}, [activeModal, isAudioMode]);
 
 	const hideControls = useCallback(() => {
 		setControlsVisible(false);
@@ -432,6 +472,28 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 			onPlayNext(nextEpisode);
 		}
 	}, [nextEpisode, onPlayNext, cancelNextEpisodeCountdown]);
+
+	// Audio playlist: next track
+	const handleNextTrack = useCallback(async () => {
+		if (hasNextTrack && onPlayNext) {
+			await playback.reportStop(positionRef.current);
+			onPlayNext(audioPlaylist[audioPlaylistIndex + 1]);
+		}
+	}, [hasNextTrack, onPlayNext, audioPlaylist, audioPlaylistIndex]);
+
+	// Audio playlist: previous track (or restart current if >3s in)
+	const handlePrevTrack = useCallback(async () => {
+		const video = videoRef.current;
+		if (video && video.currentTime > 3) {
+			// Restart current track
+			video.currentTime = 0;
+			return;
+		}
+		if (hasPrevTrack && onPlayNext) {
+			await playback.reportStop(positionRef.current);
+			onPlayNext(audioPlaylist[audioPlaylistIndex - 1]);
+		}
+	}, [hasPrevTrack, onPlayNext, audioPlaylist, audioPlaylistIndex]);
 
 	// Start countdown to next episode
 	const startNextEpisodeCountdown = useCallback(() => {
@@ -533,7 +595,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 				}
 			}
 		}
-	}, [mediaSegments, settings.skipIntro, nextEpisode, showSkipCredits, showNextEpisode, startNextEpisodeCountdown, subtitleTrackEvents, subtitleOffset]);
+	}, [mediaSegments, settings.skipIntro, nextEpisode, showSkipCredits, showNextEpisode, startNextEpisodeCountdown, subtitleTrackEvents, subtitleOffset, settings.autoPlay]);
 
 	const handleWaiting = useCallback(() => {
 		setIsBuffering(true);
@@ -548,13 +610,16 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 
 	const handleEnded = useCallback(async () => {
 		await playback.reportStop(positionRef.current);
-		if (nextEpisode && onPlayNext) {
+		// Auto-advance to next track in audio playlist
+		if (hasNextTrack && onPlayNext) {
+			onPlayNext(audioPlaylist[audioPlaylistIndex + 1]);
+		} else if (nextEpisode && onPlayNext) {
 			onPlayNext(nextEpisode);
 		} else {
 			cleanupVideoElement(videoRef.current);
 			onEnded?.();
 		}
-	}, [onEnded, onPlayNext, nextEpisode]);
+	}, [onEnded, onPlayNext, nextEpisode, hasNextTrack, audioPlaylist, audioPlaylistIndex]);
 
 	const handleError = useCallback(async () => {
 		console.error('[Player] Playback error');
@@ -716,22 +781,45 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 			setSelectedSubtitleIndex(index);
 			const stream = subtitleStreams.find(s => s.index === index);
 
+			let nativeSuccess = false;
+
 			if (stream && stream.isEmbeddedNative) {
-				// Use AVPlay's native track selection for embedded SRT
-				const trackIndex = subtitleStreams.indexOf(stream);
-				if (trackIndex >= 0) {
-					avplaySelectTrack('SUBTITLE', trackIndex);
-					avplaySetSilentSubtitle(false);
+				// Try to use AVPlay's native track selection for embedded SRT
+				try {
+					const trackInfo = avplayGetTracks();
+					// Filter for subtitle tracks
+					const subTracks = Array.isArray(trackInfo) ? trackInfo.filter(t => t.type === 'SUBTITLE') : [];
+
+					if (subTracks.length > 0) {
+						// Only count embedded streams to match Tizen's list
+						const embeddedStreams = subtitleStreams.filter(s => s.isEmbeddedNative);
+						const embeddedIndex = embeddedStreams.indexOf(stream);
+
+						if (embeddedIndex >= 0 && embeddedIndex < subTracks.length) {
+							// Use the index from the Tizen object if possible
+							const tizenIndex = subTracks[embeddedIndex].index;
+							avplaySelectTrack('SUBTITLE', tizenIndex);
+							avplaySetSilentSubtitle(false);
+							nativeSuccess = true;
+						}
+					}
+				} catch (err) {
+					console.warn('[Player] Error selecting native track:', err);
 				}
+			}
+
+			if (nativeSuccess) {
 				setSubtitleTrackEvents(null);
 				setCurrentSubtitleText(null);
-			} else if (stream && stream.isTextBased) {
+			} else if (stream && (stream.isTextBased || stream.isEmbeddedNative)) {
+				// Fallback to extraction (text-based) logic
+				// This runs if it's a text stream OR if it was an embedded native stream that failed the check above
 				avplaySetSilentSubtitle(true); // hide native subs, use custom overlay
 				try {
 					const data = await playback.fetchSubtitleData(stream);
 					if (data && data.TrackEvents) {
 						setSubtitleTrackEvents(data.TrackEvents);
-						console.log('[Player] Loaded', data.TrackEvents.length, 'subtitle events');
+						console.log('[Player] Loaded', data.TrackEvents.length, 'subtitle events (Fallback/Extracted)');
 					} else {
 						setSubtitleTrackEvents(null);
 					}
@@ -832,9 +920,11 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 			case 'chapter': openModal('chapter'); break;
 			case 'info': openModal('info'); break;
 			case 'next': handlePlayNextEpisode(); break;
+			case 'nextTrack': handleNextTrack(); break;
+			case 'prevTrack': handlePrevTrack(); break;
 			default: break;
 		}
-	}, [showControls, handlePlayPause, handleRewind, handleForward, openModal, handlePlayNextEpisode]);
+	}, [showControls, handlePlayPause, handleRewind, handleForward, openModal, handlePlayNextEpisode, handleNextTrack, handlePrevTrack]);
 
 	// Wrapper for control button clicks - reads action from data attribute
 	const handleControlButtonClick = useCallback((e) => {
@@ -987,7 +1077,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 					e.preventDefault();
 					setFocusRow(prev => {
 						if (prev === 'top') return 'progress';
-						if (prev === 'progress') return 'bottom';
+						if (prev === 'progress') return bottomButtons.length > 0 ? 'bottom' : 'progress';
 						return 'bottom'; // Already at bottom, stay there
 					});
 					return;
@@ -1003,7 +1093,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleRewind, handleForward, currentTime, duration, settings.seekStep]);
+	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleForward, handleRewind, currentTime, duration, settings.seekStep, showNextEpisode, showSkipCredits, nextEpisode, cancelNextEpisodeCountdown, bottomButtons.length]);
 
 	// Calculate progress - use seekPosition when actively seeking for smooth scrubbing
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;
@@ -1057,6 +1147,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 				ref={videoRef}
 				className={css.videoPlayer}
 				src={mediaUrl}
+				style={isAudioMode ? {opacity: 0, pointerEvents: 'none'} : undefined}
 				autoPlay
 				onLoadedMetadata={handleLoadedMetadata}
 				onPlay={handlePlay}
@@ -1068,8 +1159,43 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 				onError={handleError}
 			/>
 
+			{/* Audio Mode: Album Art + Info */}
+			{isAudioMode && (
+				<div className={css.audioModeBackground}>
+					<div className={css.audioModeContent}>
+						<div className={css.audioAlbumArt}>
+							{item.ImageTags?.Primary ? (
+								<img
+									src={getImageUrl(item._serverUrl || getServerUrl(), item.Id, 'Primary', {maxHeight: 500, quality: 90})}
+									alt={item.Name}
+									className={css.audioAlbumImg}
+								/>
+							) : item.AlbumId && item.AlbumPrimaryImageTag ? (
+								<img
+									src={getImageUrl(item._serverUrl || getServerUrl(), item.AlbumId, 'Primary', {maxHeight: 500, quality: 90})}
+									alt={item.Album || item.Name}
+									className={css.audioAlbumImg}
+								/>
+							) : (
+								<div className={css.audioAlbumPlaceholder}>
+									<svg viewBox="0 -960 960 960" fill="currentColor" width="120" height="120">
+										<path d="M400-120q-66 0-113-47t-47-113q0-66 47-113t113-47q23 0 42.5 5.5T480-418v-422h240v160H560v400q0 66-47 113t-113 47Z"/>
+									</svg>
+								</div>
+							)}
+						</div>
+						<div className={css.audioTrackInfo}>
+							<h1 className={css.audioTrackTitle}>{title}</h1>
+							{subtitle && <p className={css.audioTrackArtist}>{subtitle}</p>}
+							{item.Album && <p className={css.audioTrackAlbum}>{item.Album}</p>}
+						</div>
+					</div>
+				</div>
+			)}
+
+
 			{/* Custom Subtitle Overlay - Tizen doesn't support native <track> elements with AVPlay */}
-			{currentSubtitleText && (
+			{currentSubtitleText && !isAudioMode && (
 				<div
 					className={css.subtitleOverlay}
 					style={{
@@ -1099,8 +1225,8 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 				</div>
 			)}
 
-			{/* Video Dimmer */}
-			<div className={`${css.videoDimmer} ${controlsVisible ? css.visible : ''}`} />
+			{/* Video Dimmer - not needed for audio */}
+			{!isAudioMode && <div className={`${css.videoDimmer} ${controlsVisible ? css.visible : ''}`} />}
 
 			{/* Buffering Indicator */}
 			{isBuffering && (
@@ -1117,7 +1243,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 			)}
 
 			{/* Skip Intro Button */}
-			{showSkipIntro && !activeModal && (
+			{showSkipIntro && !isAudioMode && !activeModal && (
 				<div className={css.skipOverlay}>
 					<SpottableButton className={css.skipButton} onClick={handleSkipIntro}>
 						Skip Intro
@@ -1126,7 +1252,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 			)}
 
 			{/* Next Episode Overlay */}
-			{(showSkipCredits || showNextEpisode) && nextEpisode && !activeModal && (
+			{(showSkipCredits || showNextEpisode) && nextEpisode && !isAudioMode && !activeModal && (
 				<div className={css.nextEpisodeOverlay}>
 					<div className={css.nextLabel}>Up Next</div>
 					<div className={css.nextTitle}>{nextEpisode.Name}</div>
@@ -1148,14 +1274,16 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 			)}
 
 			{/* Player Controls Overlay */}
-			<div className={`${css.playerControls} ${controlsVisible && !activeModal ? css.visible : ''}`}>
-				{/* Top - Media Info */}
+			<div className={`${css.playerControls} ${controlsVisible && !activeModal ? css.visible : ''} ${isAudioMode ? css.audioControls : ''}`}>
+				{/* Top - Media Info (hidden in audio mode, shown in album art area instead) */}
+				{!isAudioMode && (
 				<div className={css.controlsTop}>
 					<div className={css.mediaInfo}>
 						<h1 className={css.mediaTitle}>{title}</h1>
 						{subtitle && <p className={css.mediaSubtitle}>{subtitle}</p>}
 					</div>
 				</div>
+				)}
 
 				{/* Bottom - Controls */}
 				<div className={css.controlsBottom}>
@@ -1192,7 +1320,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 						>
 							<div className={css.progressFill} style={{width: `${progressPercent}%`}} />
 							<div className={css.seekIndicator} style={{left: `${progressPercent}%`}} />
-							{isSeeking && (
+							{isSeeking && !isAudioMode && (
 								<TrickplayPreview
 									itemId={item.Id}
 									mediaSourceId={mediaSourceId}
@@ -1210,6 +1338,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 					</div>
 
 					{/* Bottom Row Buttons */}
+					{bottomButtons.length > 0 && (
 					<div className={css.controlButtonsBottom}>
 						{bottomButtons.map((btn) => (
 							<SpottableButton
@@ -1226,6 +1355,7 @@ const Player = ({item, onEnded, onBack, onPlayNext, initialAudioIndex, initialSu
 							</SpottableButton>
 						))}
 					</div>
+					)}
 				</div>
 			</div>
 

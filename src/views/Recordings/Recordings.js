@@ -3,7 +3,6 @@ import Spottable from '@enact/spotlight/Spottable';
 import {useAuth} from '../../context/AuthContext';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import {formatDuration} from '../../utils/helpers';
-import {isBackKey} from '../../utils/tizenKeys';
 
 import css from './Recordings.module.less';
 
@@ -81,7 +80,7 @@ const TimerCard = ({timer, serverUrl, formatScheduledTime, onSelect}) => {
 	);
 };
 
-const Recordings = ({onPlayRecording, onBack}) => {
+const Recordings = ({onPlayRecording, backHandlerRef}) => {
 	const {api, serverUrl} = useAuth();
 	const [recordings, setRecordings] = useState([]);
 	const [timers, setTimers] = useState([]);
@@ -90,26 +89,16 @@ const Recordings = ({onPlayRecording, onBack}) => {
 	const [selectedItem, setSelectedItem] = useState(null);
 
 	useEffect(() => {
-		const handleKeyDown = (e) => {
+		if (!backHandlerRef) return;
+		backHandlerRef.current = () => {
 			if (selectedItem) {
-				if (isBackKey(e)) {
-					e.preventDefault();
-					e.stopPropagation();
-					setSelectedItem(null);
-					return;
-				}
-				return;
+				setSelectedItem(null);
+				return true;
 			}
-
-			if (isBackKey(e)) {
-				e.preventDefault();
-				onBack?.();
-			}
+			return false;
 		};
-
-		window.addEventListener('keydown', handleKeyDown, true);
-		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [onBack, selectedItem]);
+		return () => { if (backHandlerRef) backHandlerRef.current = null; };
+	}, [backHandlerRef, selectedItem]);
 
 	useEffect(() => {
 		const loadData = async () => {

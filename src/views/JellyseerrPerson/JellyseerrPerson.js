@@ -4,7 +4,6 @@ import Spotlight from '@enact/spotlight';
 import Image from '@enact/sandstone/Image';
 import jellyseerrApi from '../../services/jellyseerrApi';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import {isBackKey} from '../../utils/tizenKeys';
 import css from './JellyseerrPerson.module.less';
 
 const SpottableDiv = Spottable('div');
@@ -15,17 +14,6 @@ const JellyseerrPerson = ({personId, personName, onClose, onSelectItem, onBack})
 	const [error, setError] = useState(null);
 	const [biographyExpanded, setBiographyExpanded] = useState(false);
 	const appearancesRef = useRef([]);
-
-	useEffect(() => {
-		const handleKeyDown = (e) => {
-			if (isBackKey(e)) {
-				onClose?.();
-				onBack?.();
-			}
-		};
-		document.addEventListener('keydown', handleKeyDown);
-		return () => document.removeEventListener('keydown', handleKeyDown);
-	}, [onClose, onBack]);
 
 	useEffect(() => {
 		if (!personId) return;
@@ -90,15 +78,15 @@ const JellyseerrPerson = ({personId, personName, onClose, onSelectItem, onBack})
 					) : (
 						<div className={css.noPoster}>{title?.[0]}</div>
 					)}
+					{/* Media type badge - top left */}
 					{itemMediaType && (
 						<div className={`${css.mediaTypeBadge} ${itemMediaType === 'movie' ? css.movieBadge : css.seriesBadge}`}>
 							{itemMediaType === 'movie' ? 'MOVIE' : 'SERIES'}
 						</div>
 					)}
+					{/* Availability badge - top right */}
 					{status && [3, 4, 5].includes(status) && (
-						<div className={`${css.availabilityBadge} ${css[`availability${status}`]}`}>
-							{status === 5 ? 'Available' : status === 4 ? 'Partial' : 'Processing'}
-						</div>
+						<div className={`${css.availabilityBadge} ${css[`availability${status}`]}`} />
 					)}
 				</div>
 				<div className={css.cardInfo}>

@@ -4,7 +4,6 @@ import SpotlightContainerDecorator from '@enact/spotlight/SpotlightContainerDeco
 import Spotlight from '@enact/spotlight';
 import {useAuth} from '../../context/AuthContext';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import {isBackKey} from '../../utils/tizenKeys';
 
 import css from './LiveTV.module.less';
 
@@ -48,7 +47,7 @@ const ProgramCell = ({program, channel, style, isCurrent, onProgramClick}) => {
 	);
 };
 
-const LiveTV = ({onPlayChannel, onBack, onRecordings}) => {
+const LiveTV = ({onPlayChannel, onRecordings, backHandlerRef}) => {
 	const {api, serverUrl} = useAuth();
 	const [channels, setChannels] = useState([]);
 	const [programs, setPrograms] = useState({});
@@ -162,28 +161,27 @@ const LiveTV = ({onPlayChannel, onBack, onRecordings}) => {
 	}, [channelNumberBuffer, channels]);
 
 	useEffect(() => {
+		if (!backHandlerRef) return;
+		backHandlerRef.current = () => {
+			if (selectedProgram) {
+				setSelectedProgram(null);
+				return true;
+			}
+			return false;
+		};
+		return () => { if (backHandlerRef) backHandlerRef.current = null; };
+	}, [backHandlerRef, selectedProgram]);
+
+	useEffect(() => {
 		const handleKeyDown = (e) => {
 			const keyCode = e.keyCode;
 
-			if (selectedProgram) {
-				if (isBackKey(e)) {
-					e.preventDefault();
-					e.stopPropagation();
-					setSelectedProgram(null);
-					return;
-				}
-				return;
-			}
+			// Block all input when program detail is shown
+			if (selectedProgram) return;
 
 			if (keyCode >= 48 && keyCode <= 57) {
 				e.preventDefault();
 				handleChannelNumber(String.fromCharCode(keyCode));
-				return;
-			}
-
-			if (isBackKey(e)) {
-				e.preventDefault();
-				onBack?.();
 				return;
 			}
 
@@ -217,7 +215,7 @@ const LiveTV = ({onPlayChannel, onBack, onRecordings}) => {
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [onBack, selectedProgram, focusMode, handleChannelNumber]);
+	}, [selectedProgram, focusMode, handleChannelNumber]);
 
 	const handleScroll = useCallback(() => {
 		const guideContent = guideContentRef.current;
