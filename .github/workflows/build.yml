@@ -19,21 +19,37 @@ jobs:
           node-version: lts/*
           cache: npm
 
+      - name: Cache Tizen Studio
+        id: cache-tizen
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/tizen-studio
+            ~/tizen-studio-data
+          key: tizen-studio-5.6
+
+      - name: Install Tizen Studio CLI
+        if: steps.cache-tizen.outputs.cache-hit != 'true'
+        run: |
+          curl -o tizen-installer.bin https://download.tizen.org/sdk/Installer/tizen-studio_5.6/web-cli_Tizen_Studio_5.6_ubuntu-64.bin
+          chmod +x tizen-installer.bin
+          ./tizen-installer.bin --accept-license "$HOME/tizen-studio"
+
+      - name: Set up Tizen CLI
+        run: |
+          echo "$HOME/tizen-studio/tools/ide/bin" >> $GITHUB_PATH
+          echo "$HOME/tizen-studio/tools" >> $GITHUB_PATH
+
+      - name: Create dummy signing certificate
+        run: |
+          tizen certificate -a MoonfinCI -p 1234 -c US -s CI -ct developer 2>/dev/null || true
+          tizen security-profiles add -n MoonfinCI -a "$HOME/tizen-studio-data/keystore/author/author.p12" -p 1234 2>/dev/null || true
+
       - name: Install dependencies
         run: npm install --force
 
-      - name: Build
-        run: |
-          npx enact pack -p 2>&1 | while IFS= read -r line; do
-            if echo "$line" | grep -qiE "(\bfailed\b|\berror\b|\bfatal\b)"; then
-              echo "::error::$line"
-            elif echo "$line" | grep -qiE "(\bwarning\b|\bwarn\b)"; then
-              echo "::warning::$line"
-            else
-              echo "$line"
-            fi
-          done
-          exit ${PIPESTATUS[0]}
+      - name: Build .wgt
+        run: npm run build
 
       - name: Get version
         id: version
@@ -44,4 +60,4 @@ jobs:
         if: success()
         with:
           name: Moonfin-Tizen-v${{ steps.version.outputs.version }}
-          path: dist/
+          path: Moonfin-v${{ steps.version.outputs.version }}.wgt
