@@ -7,13 +7,17 @@
 let listeners = [];
 let discoveredServers = [];
 
+const notifyListeners = () => {
+	listeners.forEach(cb => cb([...discoveredServers]));
+};
+
 /**
  * Subscribe to server discovery updates
  * On Tizen, this only returns manually added servers
  */
 export const subscribe = (callback) => {
 	listeners.push(callback);
-	
+
 	// Immediately call with current servers
 	if (discoveredServers.length > 0) {
 		callback(discoveredServers);
@@ -71,10 +75,10 @@ export const probeServer = async (serverUrl) => {
 		if (!url.startsWith('http://') && !url.startsWith('https://')) {
 			url = 'http://' + url;
 		}
-		
+
 		// Remove trailing slash
 		url = url.replace(/\/$/, '');
-		
+
 		// Try to get public system info
 		const response = await fetch(`${url}/System/Info/Public`, {
 			method: 'GET',
@@ -82,7 +86,7 @@ export const probeServer = async (serverUrl) => {
 				'Accept': 'application/json'
 			}
 		});
-		
+
 		if (!response.ok) {
 			throw new Error(`Server returned ${response.status}`);
 		}
@@ -109,10 +113,6 @@ export const addServerByUrl = async (serverUrl) => {
 	const server = await probeServer(serverUrl);
 	addServer(server);
 	return server;
-};
-
-const notifyListeners = () => {
-	listeners.forEach(cb => cb([...discoveredServers]));
 };
 
 export default {

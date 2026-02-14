@@ -50,7 +50,9 @@
 	"eslintIgnore": [
 		"node_modules/*",
 		"build/*",
-		"dist/*"
+		"dist/*",
+		"scripts/*",
+		"tizen/*"
 	],
 	"eslintConfig": {
 		"env": {
