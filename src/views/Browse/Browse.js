@@ -43,7 +43,7 @@ const Browse = ({
 	onSelectLibrary,
 	isVisible = true
 }) => {
-	const {api, serverUrl, accessToken, hasMultipleServers} = useAuth();
+	const {api, serverUrl, accessToken, hasMultipleServers, user} = useAuth();
 	const {settings} = useSettings();
 	const unifiedMode = settings.unifiedLibraryMode && hasMultipleServers;
 	const [isLoading, setIsLoading] = useState(true);
@@ -365,26 +365,27 @@ const Browse = ({
 				libraries: libs,
 				featuredItems: featured,
 				timestamp: Date.now(),
-				serverUrl
+				serverUrl,
+				userId: user?.Id || null
 			};
 			await saveToStorage(STORAGE_KEY_BROWSE, cacheData);
 		} catch (e) {
 			console.warn('[Browse] Failed to save cache:', e);
 		}
-	}, [serverUrl]);
+	}, [serverUrl, user?.Id]);
 
 	// Load browse data from persistent storage
 	const loadBrowseCache = useCallback(async () => {
 		try {
 			const cached = await getFromStorage(STORAGE_KEY_BROWSE);
-			if (cached && cached.serverUrl === serverUrl) {
+			if (cached && cached.serverUrl === serverUrl && cached.userId === (user?.Id || null)) {
 				return cached;
 			}
 		} catch (e) {
 			console.warn('[Browse] Failed to load cache:', e);
 		}
 		return null;
-	}, [serverUrl]);
+	}, [serverUrl, user?.Id]);
 
 	useEffect(() => {
 		const loadData = async () => {
