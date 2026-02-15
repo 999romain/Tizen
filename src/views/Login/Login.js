@@ -1,4 +1,4 @@
-import {useState, useCallback, useEffect} from 'react';
+import {useState, useCallback, useEffect, useRef} from 'react';
 import Spottable from '@enact/spotlight/Spottable';
 import Spotlight from '@enact/spotlight';
 import {useAuth} from '../../context/AuthContext';
@@ -36,6 +36,8 @@ const Login = ({
 	const isAddingServer = isAddingServerProp || isAddingServerContext;
 	const isAddingToExisting = isAddingUser && currentServerUrl;
 	const pendingServer = pendingServerInfo || pendingServerContext;
+
+	const userIsConnecting = useRef(false);
 
 	const [step, setStep] = useState(isAddingToExisting ? 'connecting' : 'server');
 	const [serverUrl, setServerUrl] = useState(isAddingToExisting ? currentServerUrl : (pendingServer?.url || storedServerUrl || ''));
@@ -122,24 +124,19 @@ const Login = ({
 		setPassword(e.target.value);
 	}, []);
 
-	const handleUserSelect = useCallback((user) => {
-		setSelectedUser(user);
-		setUsername(user.Name);
-		setPassword('');
-		setStep('password');
-		setTimeout(() => Spotlight.focus('[data-spotlight-id="password-input"]'), 100);
-	}, []);
-
-	const handleLogin = useCallback(async () => {
-		if (!username) return;
-
+	const performLogin = useCallback(async (usernameToLogin, passwordToLogin) => {
+		if (userIsConnecting.current) {
+			setStatus('Already connecting...');
+			return;
+		}
+		userIsConnecting.current = true;
 		setIsConnecting(true);
 		setError(null);
 		const isAdding = isAddingServer || isAddingToExisting;
 		setStatus(isAdding ? 'Adding user...' : 'Signing in...');
 
 		try {
-			const result = await login(jellyfinApi.getServerUrl(), username, password, {
+			const result = await login(jellyfinApi.getServerUrl(), usernameToLogin, passwordToLogin, {
 				serverName: serverInfo?.ServerName,
 				isAddingNewServer: isAdding,
 				switchToNewUser: true
@@ -157,8 +154,29 @@ const Login = ({
 			setStatus(null);
 		} finally {
 			setIsConnecting(false);
+			userIsConnecting.current = false;
 		}
-	}, [username, password, login, onLoggedIn, isAddingServer, isAddingToExisting, serverInfo, completeAddServerFlow, onServerAdded]);
+	}, [login, isAddingServer, isAddingToExisting, serverInfo, completeAddServerFlow, onServerAdded, onLoggedIn]);
+
+	const handleUserSelect = useCallback(async (user) => {
+		setSelectedUser(user);
+		setUsername(user.Name);
+		setPassword('');
+
+		const requiresPassword = !!(user.HasPassword || user.HasConfiguredPassword || user.HasConfiguredEasyPassword);
+		if (!requiresPassword) {
+			await performLogin(user.Name, '');
+			return;
+		}
+
+		setStep('password');
+		setTimeout(() => Spotlight.focus('[data-spotlight-id="password-input"]'), 100);
+	}, [performLogin]);
+
+	const handleLogin = useCallback(async () => {
+		if (!username) return;
+		await performLogin(username, password);
+	}, [username, password, performLogin]);
 
 	const handleBack = useCallback(() => {
 		setError(null);
