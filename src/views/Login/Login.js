@@ -394,9 +394,7 @@ const Login = ({
 	return (
 		<div className={css.page}>
 			<div className={css.container}>
-				<div className={css.logoSection}>
-					<img src="resources/banner-dark.png" alt="Moonfin" className={css.logo} />
-				</div>
+				<img src="resources/banner-dark.png" alt="Moonfin" className={css.logo} />
 
 				{status && <div className={css.statusMessage}>{status}</div>}
 				{error && <div className={css.errorMessage}>{error}</div>}
@@ -442,8 +440,7 @@ const Login = ({
 
 					{step === 'users' && (
 						<div className={css.section}>
-							<h1>{serverInfo?.ServerName || 'Jellyfin'}</h1>
-							<p className={css.subtitle}>Who&apos;s watching?</p>
+							<h3 className={css.subtitle}>Who&apos;s watching?</h3>
 							<div className={css.userGrid}>
 								{publicUsers.map((user, index) => (
 									<SpottableDiv
@@ -472,14 +469,14 @@ const Login = ({
 							<div className={css.buttonGroup}>
 								<SpottableButton
 									data-spotlight-id="manual-login-btn"
-									className={`${css.btn} ${css.btnSecondary}`}
+									className={`${css.btn} ${css.btnPrimary}`}
 									onClick={handleManualLogin}
 								>
 									Manual Login
 								</SpottableButton>
 								<SpottableButton
 									data-spotlight-id="back-btn"
-									className={`${css.btn} ${css.btnSecondary}`}
+									className={`${css.btn} ${css.btnPrimary}`}
 									onClick={handleBack}
 								>
 									Change Server
