@@ -38,6 +38,8 @@
 }
 
 .section {
+	width: 100%;
+    overflow: hidden;
 	h1 {
 		color: #fff;
 		font-size: 48px;
@@ -156,31 +158,30 @@
 }
 
 .userGrid {
-	display: flex;
-	flex-wrap: nowrap;
-	margin: 30px 0;
-	overflow-x: auto;
-	overflow-y: hidden;
-	padding: 10px;
-	scroll-behavior: smooth;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: visible;
+    margin: 20px 0;
+    padding: 15px 20px;
+    box-sizing: border-box;
+    justify-content: flex-start;
 
-	> * + * {
-		margin-left: 30px;
-	}
+    -ms-overflow-style: none;
+    scrollbar-width: none;
 
-	&::-webkit-scrollbar {
-		height: 8px;
-	}
+    &::-webkit-scrollbar {
+        display: none;
+    }
 
-	&::-webkit-scrollbar-track {
-		background: rgba(255, 255, 255, 0.1);
-		border-radius: 4px;
-	}
+    > * {
+        margin-left: 20px;
+        flex-shrink: 0;
 
-	&::-webkit-scrollbar-thumb {
-		background: @accent;
-		border-radius: 4px;
-	}
+        &:first-child {
+            margin-left: 0;
+        }
+    }
 }
 
 .userCard {
