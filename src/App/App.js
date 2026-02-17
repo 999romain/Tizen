@@ -100,7 +100,8 @@ const AppContent = (props) => {
 	const backHandlerRef = useRef(null);
 	const detailsItemStackRef = useRef([]);
 	const jellyseerrItemStackRef = useRef([]);
-
+	const prevUserIdRef = useRef(null);
+	
 	const fetchLibraries = useCallback(async () => {
 		if (isAuthenticated && api && user) {
 			try {
@@ -242,6 +243,20 @@ const AppContent = (props) => {
 			initSmartHub();
 		}
 	}, [isAuthenticated]);
+
+	// Redirect to Browse panel on user change to reset state, prevents issues with stale data when switching accounts
+	useEffect(() => {
+		if (!isAuthenticated || !user?.Id) {
+			prevUserIdRef.current = null;
+			return;
+		}
+
+		if (user.Id !== prevUserIdRef.current) {
+			prevUserIdRef.current = user.Id;
+			setPanelHistory([]);
+			setPanelIndex(PANELS.BROWSE);
+		}
+	}, [user?.Id, isAuthenticated]);
 
 	const navigateTo = useCallback((panel, addToHistory = true) => {
 		if (addToHistory && panelIndex !== PANELS.LOGIN) {
