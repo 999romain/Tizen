@@ -131,6 +131,7 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, bac
 	const [collectionItems, setCollectionItems] = useState([]);
 	const [albumTracks, setAlbumTracks] = useState([]);
 	const [artistAlbums, setArtistAlbums] = useState([]);
+	const [playlistItems, setPlaylistItems] = useState([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [selectedAudioIndex, setSelectedAudioIndex] = useState(0);
 	const [selectedSubtitleIndex, setSelectedSubtitleIndex] = useState(-1);
@@ -155,6 +156,7 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, bac
 			setCollectionItems([]);
 			setAlbumTracks([]);
 			setArtistAlbums([]);
+			setPlaylistItems([]);
 			setShowMediaInfo(false);
 
 			try {
@@ -228,7 +230,14 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, bac
 					} catch (e) { /* Similar artists not available */ }
 				}
 
-				if (data.Type !== 'Person' && data.Type !== 'BoxSet' && data.Type !== 'MusicAlbum' && data.Type !== 'MusicArtist') {
+				if (data.Type === 'Playlist') {
+					try {
+						const playlistData = await effectiveApi.getPlaylistItems(data.Id);
+						setPlaylistItems(tagWithServerInfo(playlistData.Items || []));
+					} catch (e) { /* Playlist items not available */ }
+				}
+
+				if (data.Type !== 'Person' && data.Type !== 'BoxSet' && data.Type !== 'MusicAlbum' && data.Type !== 'MusicArtist' && data.Type !== 'Playlist') {
 					try {
 						const similarData = await effectiveApi.getSimilar(itemId);
 						setSimilar(tagWithServerInfo(similarData.Items || []));
@@ -297,10 +306,19 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, bac
 			if (albumTracks.length > 0) {
 				onPlay?.(albumTracks[0], false, {audioPlaylist: albumTracks});
 			}
+		} else if (item.Type === 'Playlist') {
+			if (playlistItems.length > 0) {
+				const firstItem = playlistItems[0];
+				if (firstItem.MediaType === 'Audio') {
+					onPlay?.(firstItem, false, {audioPlaylist: playlistItems});
+				} else {
+					onPlay?.(firstItem, false, {});
+				}
+			}
 		} else {
 			onPlay?.(item, false, playbackOptions);
 		}
-	}, [item, episodes, nextUp, seasons, albumTracks, onPlay, onSelectItem, selectedAudioIndex, selectedSubtitleIndex]);
+	}, [item, episodes, nextUp, seasons, albumTracks, playlistItems, onPlay, onSelectItem, selectedAudioIndex, selectedSubtitleIndex]);
 
 	const handleResume = useCallback(() => {
 		if (!item) return;
@@ -538,6 +556,86 @@ const Details = ({itemId, initialItem, onPlay, onSelectItem, onSelectPerson, bac
 		}
 	}, [onSelectPerson]);
 
+	const handlePlaylistItemSelect = useCallback((ev) => {
+		const plItemId = ev.currentTarget.dataset.playlistItemId;
+		const plItem = playlistItems.find(t => t.Id === plItemId);
+		if (plItem) {
+			if (plItem.MediaType === 'Audio') {
+				onPlay?.(plItem, false, {audioPlaylist: playlistItems});
+			} else {
+				onSelectItem?.(plItem);
+			}
+		}
+	}, [playlistItems, onPlay, onSelectItem]);
+
+	const handlePlaylistShuffle = useCallback(() => {
+		if (playlistItems.length < 2) return;
+		const shuffled = [...playlistItems];
+		for (let i = shuffled.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+		}
+		const firstItem = shuffled[0];
+		if (firstItem.MediaType === 'Audio') {
+			onPlay?.(firstItem, false, {audioPlaylist: shuffled});
+		} else {
+			onPlay?.(firstItem, false, {});
+		}
+	}, [playlistItems, onPlay]);
+
+	const handlePlaylistItemReorder = useCallback(async (itemIndex, direction) => {
+		const newIndex = itemIndex + direction;
+		if (newIndex < 0 || newIndex >= playlistItems.length) return;
+
+		const movingItem = playlistItems[itemIndex];
+
+		const newItems = [...playlistItems];
+		newItems.splice(itemIndex, 1);
+		newItems.splice(newIndex, 0, movingItem);
+		setPlaylistItems(newItems);
+
+		window.requestAnimationFrame(() => {
+			const listEl = document.querySelector(`.${css.playlistItemsList}`);
+			if (listEl) {
+				const items = listEl.querySelectorAll('.spottable');
+				if (items[newIndex]) {
+					Spotlight.focus(items[newIndex]);
+				}
+			}
+		});
+
+		try {
+			await effectiveApi.movePlaylistItem(item.Id, movingItem.PlaylistItemId, newIndex);
+		} catch (e) {
+			console.error('[Details] Failed to reorder playlist item', e);
+			const revertItems = [...newItems];
+			revertItems.splice(newIndex, 1);
+			revertItems.splice(itemIndex, 0, movingItem);
+			setPlaylistItems(revertItems);
+		}
+	}, [playlistItems, effectiveApi, item]);
+
+	const handlePlaylistItemKeyDown = useCallback((ev) => {
+		const currentSpottable = ev.target.closest('.spottable');
+		if (!currentSpottable) return;
+		const itemIndex = parseInt(currentSpottable.dataset.playlistIndex, 10);
+		if (isNaN(itemIndex)) return;
+
+		if (ev.keyCode === KEYS.LEFT) {
+			if (itemIndex > 0) {
+				ev.preventDefault();
+				ev.stopPropagation();
+				handlePlaylistItemReorder(itemIndex, -1);
+			}
+		} else if (ev.keyCode === KEYS.RIGHT) {
+			if (itemIndex < playlistItems.length - 1) {
+				ev.preventDefault();
+				ev.stopPropagation();
+				handlePlaylistItemReorder(itemIndex, 1);
+			}
+		}
+	}, [handlePlaylistItemReorder, playlistItems.length]);
+
 	// Register back handler interceptor for modals
 	useEffect(() => {
 		if (!backHandlerRef) return;
@@ -697,6 +795,7 @@ const handleSectionKeyDown = useCallback((ev) => {
 	const isBoxSet = item.Type === 'BoxSet';
 	const isAlbum = item.Type === 'MusicAlbum';
 	const isMusicArtist = item.Type === 'MusicArtist';
+	const isPlaylist = item.Type === 'Playlist';
 	const isAudioTrack = item.Type === 'Audio';
 	const isBook = item.Type === 'Book';
 	const isReadableBook = isBook && item.Path?.toLowerCase().endsWith('.cbz');
@@ -1134,6 +1233,108 @@ const handleSectionKeyDown = useCallback((ev) => {
 											</div>
 											<span className={css.seasonEpTitle}>{ep.Name}</span>
 											{ep.Overview && <p className={css.seasonEpOverview}>{ep.Overview}</p>}
+										</div>
+									</SpottableDiv>
+								);
+							})}
+						</div>
+					</div>
+				</Scroller>
+			</div>
+		);
+	}
+
+	if (isPlaylist) {
+		const playlistItemCount = playlistItems.length;
+		const totalDuration = playlistItems.reduce((sum, t) => sum + (t.RunTimeTicks || 0), 0);
+
+		return (
+			<div className={css.page}>
+				{renderBackdrop()}
+				<Scroller ref={pageScrollerRef} cbScrollTo={handlePageScrollTo} className={css.scroller} direction="vertical" horizontalScrollbar="hidden" verticalScrollbar="hidden">
+					<div className={css.content}>
+						<div className={css.seasonDetailHeader}>
+							{posterUrl && (
+								<div className={css.seasonDetailPoster}>
+									<img src={posterUrl} alt="" />
+								</div>
+							)}
+							<div className={css.seasonDetailInfo}>
+								<h1 className={css.seasonDetailTitle}>{item.Name}</h1>
+								<span className={css.seasonDetailCount}>
+									{playlistItemCount} Item{playlistItemCount !== 1 ? 's' : ''}
+									{totalDuration > 0 ? ` · ${formatDuration(totalDuration)}` : ''}
+								</span>
+								{genres.length > 0 && (
+									<span className={css.seasonDetailCount}>{genres.join(', ')}</span>
+								)}
+								{item.Overview && <p className={css.overview}>{item.Overview}</p>}
+							</div>
+						</div>
+
+						<HorizontalContainer className={css.actionButtons} onKeyDown={handleSeasonButtonKeyDown} onFocus={handleButtonRowFocus}>
+							{playlistItems.length > 0 && (
+								<SpottableDiv className={css.btnWrapper} onClick={handlePlay} onFocus={handleButtonRowFocus} spotlightId="details-primary-btn">
+									<div className={css.btnAction}>
+										<span className={css.btnIcon}>▶</span>
+									</div>
+									<span className={css.btnLabel}>Play</span>
+								</SpottableDiv>
+							)}
+							{playlistItems.length > 1 && (
+								<SpottableDiv className={css.btnWrapper} onClick={handlePlaylistShuffle}>
+									<div className={css.btnAction}>
+										<svg className={css.btnIcon} viewBox="0 -960 960 960" fill="currentColor">
+											<path d="M560-160v-80h104L537-367l57-57 126 126v-102h80v240H560Zm-344 0-56-56 504-504H560v-80h240v240h-80v-104L216-160Zm151-377L160-744l56-56 207 207-56 56Z"/>
+										</svg>
+									</div>
+									<span className={css.btnLabel}>Shuffle</span>
+								</SpottableDiv>
+							)}
+							<SpottableDiv className={css.btnWrapper} onClick={handleToggleFavorite} spotlightId="details-favorite-btn">
+								<div className={css.btnAction}>
+									<svg className={`${css.btnIcon} ${item.UserData?.IsFavorite ? css.favorited : ''}`} viewBox="0 -960 960 960" fill="currentColor">
+										<path d="m480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 22t81 62q34-40 81-62t99-22q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q771-395 705-329T538-172l-58 52Z"/>
+									</svg>
+								</div>
+								<span className={css.btnLabel}>{item.UserData?.IsFavorite ? 'Favorited' : 'Favorite'}</span>
+							</SpottableDiv>
+						</HorizontalContainer>
+
+						<p className={css.playlistHint}>Use ◀ and ▶ to re-order items</p>
+
+						<div className={`${css.trackList} ${css.playlistItemsList}`} onKeyDown={handlePlaylistItemKeyDown}>
+							{playlistItems.map((plItem, idx) => {
+								const plDuration = plItem.RunTimeTicks ? formatDuration(plItem.RunTimeTicks) : '';
+								const plArtist = plItem.AlbumArtist || plItem.Artists?.[0] || '';
+								const isAudio = plItem.MediaType === 'Audio';
+								const thumbUrl = plItem.ImageTags?.Primary
+									? getImageUrl(effectiveServerUrl, plItem.Id, 'Primary', {maxHeight: 80, quality: 80})
+									: null;
+
+								return (
+									<SpottableDiv
+										key={plItem.PlaylistItemId || plItem.Id}
+										className={css.playlistItem}
+										data-playlist-item-id={plItem.Id}
+										data-playlist-index={idx}
+										onClick={handlePlaylistItemSelect}
+									>
+										<span className={css.trackNumber}>{idx + 1}</span>
+										{thumbUrl && (
+											<div className={css.playlistItemThumb}>
+												<img src={thumbUrl} alt="" />
+											</div>
+										)}
+										<div className={css.trackInfo}>
+											<span className={css.trackTitle}>{plItem.Name}</span>
+											{plArtist && <span className={css.trackArtist}>{plArtist}</span>}
+											{!isAudio && plItem.Type && <span className={css.trackArtist}>{plItem.Type}</span>}
+										</div>
+										<span className={css.trackDuration}>{plDuration}</span>
+										<div className={css.playlistReorderArrows}>
+											<span className={`${css.reorderArrow} ${idx === 0 ? css.reorderArrowDisabled : ''}`}>▲</span>
+											<span className={`${css.reorderArrow} ${idx === playlistItems.length - 1 ? css.reorderArrowDisabled : ''}`}>▼</span>
 										</div>
 									</SpottableDiv>
 								);

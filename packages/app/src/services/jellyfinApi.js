@@ -322,7 +322,15 @@ export const api = {
 		request(`/Users/${currentUser}/Items?ArtistIds=${artistId}&IncludeItemTypes=Audio&Recursive=true&SortBy=Album,ParentIndexNumber,IndexNumber&SortOrder=Ascending&Limit=${limit}&Fields=PrimaryImageAspectRatio,ProductionYear,AlbumArtist`),
 
 	getInstantMix: (itemId, limit = 50) =>
-		request(`/Items/${itemId}/InstantMix?UserId=${currentUser}&Limit=${limit}&Fields=PrimaryImageAspectRatio,ProductionYear,AlbumArtist`)
+		request(`/Items/${itemId}/InstantMix?UserId=${currentUser}&Limit=${limit}&Fields=PrimaryImageAspectRatio,ProductionYear,AlbumArtist`),
+
+	getPlaylistItems: (playlistId, limit = 300) =>
+		request(`/Playlists/${playlistId}/Items?UserId=${currentUser}&Limit=${limit}&Fields=PrimaryImageAspectRatio,ProductionYear,MediaSources,MediaStreams,AlbumArtist`),
+
+	movePlaylistItem: (playlistId, itemId, newIndex) =>
+		request(`/Playlists/${playlistId}/Items/${itemId}/Move/${newIndex}`, {
+			method: 'POST'
+		})
 };
 
 /**
@@ -501,6 +509,14 @@ export const createApiForServer = (serverUrl, token, userId) => {
 
 		getInstantMix: (itemId, limit = 50) =>
 			serverRequest(`/Items/${itemId}/InstantMix?UserId=${userId}&Limit=${limit}&Fields=PrimaryImageAspectRatio,ProductionYear,AlbumArtist`),
+
+		getPlaylistItems: (playlistId, limit = 300) =>
+			serverRequest(`/Playlists/${playlistId}/Items?UserId=${userId}&Limit=${limit}&Fields=PrimaryImageAspectRatio,ProductionYear,MediaSources,MediaStreams,AlbumArtist`),
+
+		movePlaylistItem: (playlistId, itemId, newIndex) =>
+			serverRequest(`/Playlists/${playlistId}/Items/${itemId}/Move/${newIndex}`, {
+				method: 'POST'
+			}),
 
 		// Return server info for playback routing
 		getServerInfo: () => ({
