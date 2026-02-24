@@ -393,47 +393,30 @@ export const getAudioOutputInfo = async () => {
  * Release hardware video resources and reset HDR display mode.
  * Critical on webOS due to limited hardware decoder instances.
  *
- * LG webOS TVs automatically enter HDR mode when HDR content plays
- * through the HTML5 <video> element. To force the TV back to SDR mode
- * after playback stops, we must:
- * 1. Pause the HDR video
- * 2. Load a minimal SDR video (base64 1x1 h264) to switch the decoder pipeline to SDR
- * 3. Clear the source entirely and call load() to release the decoder
- *
- * Without step 2, the TV may remain stuck in HDR mode on the home screen.
+ * Loads a minimal SDR video to switch the decoder pipeline from HDR
+ * back to SDR, waits for it to be processed, then fully releases.
+ * Returns a Promise.
  */
 
-// Minimal 1x1 black H.264 SDR video (base64) - forces decoder pipeline to SDR
 const SDR_RESET_VIDEO = 'data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAABltZGF0AAACEwYF//8P3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NCByMzEwOCAzMWUxOWY5IC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAyMyAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTAgcmVmPTEgZGVibG9jaz0wOjA6MCBhbmFseXNlPTA6MCBtZT1lc2Egc3VibWU9MSBwc3k9MSBtaXhlZF9yZWY9MCBtZV9yYW5nZT00IGNocm9tYV9tZT0xIHRyZWxsaXM9MCA4eDhkY3Q9MCBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0wIHRocmVhZHM9MSBsb29rYWhlYWRfdGhyZWFkcz0xIHNsaWNlZF90aHJlYWRzPTAgbnI9MCBkZWNpbWF0ZT0xIGludGVybGFjZWQ9MCBibHVyYXlfY29tcGF0PTAgY29uc3RyYWluZWRfaW50cmE9MCBiZnJhbWVzPTAgd2VpZ2h0cD0wIGtleWludD1pbmZpbml0ZSBrZXlpbnRfbWluPTI1IHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByYz1jcmYgbWJ0cmVlPTAgY3JmPTQwLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgcGJfcmF0aW89MS4zMCBhcT0AOAAAAARliIIAJ//+9vD+BTZWBFCXEc3onTEfgfsAwSTOxyvM5QAAB0ABAAYIMAGPiyMxDMAAAAMAAAMAAAMAAAMAPnEC0APQAAACuUGaJGxBH/61KUwAAAAAAwAFWHsQAd3F8WAMuXf9rrk7W8AAAAwAAAwAAAwAAAwAAAwAAAwAuIAAAAwEAAAA7QZ5CeIR/AAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAOCAAAADwGeYXRCfwAAAwAAAwASsAAAAA8BnmNqQn8AAAMAAAMAErAAAAAxQZpoSahBaJlMCCH//fEAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMABMQAAAAGAZ6HakJ/AAAAIUGajEnhClJlMCCH//3xAAADAAADAAADAAADAAAMuQAAAA5BnqpFESwj/wAAAwAhcQAAAA4BnslqQn8AAAMAAAMAJWEAAAAeQZrOSeEOiZTAgn/98QAAAwAAAwAAAwAAAwACYgAAACRBmvBJ4Q8mUwIJ//3xAAADAAADAAADAAADAAADAAAIuQAAACZBmxJJ4Q8mUwURPDP//fEAAAMAAAMAAAMAAAMAAAMAAAMAAmIAAAAOAZ8xakJ/AAADAAADACVhAAAAHkGbNknhDyZTAhP//fEAAAMAAAMAAAMAAADAAAJiAAAAJ0GbV0nhDyZTBRE8Ef/94QAAAwAAAwAAAwAAAwAAAwAABKwAAAAOAZ92akJ/AAADAAADABKwAAAAIUGbeknhDyZTAhP//fEAAAMAAAMAAAMAAAMAAAMAAmIAAAAOAZ+ZdEJ/AAADAAADACdxAAAADgGfm2pCfwAAAwAAAwAlYQAAAB1Bm6BJ4Q8mUwIJ//3xAAADAAADAAADAAADAAJiAAAAI0Gbw0nhDyZTBRE8Ef/94QAAAwAAAwAAAwAAAwAAAwAEzAAAAA4Bn+JqQn8AAAMAAAMAErAAAAAlQZvnSeEPJlMCCf/98QAAAwAAAwAAAwAAAwAAAwAAAwAACLkAAAAOAZ4GakJ/AAADAAADACVhAAABgm1vb3YAAABsbXZoZAAAAAAAAAAAAAAAAAAAA+gAAADIAAEAAAEAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAAC0dHJhawAAAFx0a2hkAAAAAwAAAAAAAAAAAAAAAQAAAAAAAADIAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAABAAAAAAAAJGVkdHMAAAAcZWxzdAAAAAAAAAABAAABJAAAAAAAAQAAAAABLG1kaWEAAAAgbWRoZAAAAAAAAAAAAAAAAAAAFAAAABQAVcQAAAAAAC1oZGxyAAAAAAAAAAB2aWRlAAAAAAAAAAAAAAAAVmlkZW9IYW5kbGVyAAAAANdzdGJsAAAAk3N0c2QAAAAAAAAAAQAAAINhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAQABAABIAAAASAAAAAAAAAABCkFWQyBDb2RpbmcAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//AAAAH2F2Y0MBZAAK/+EAEGdkAAqs2UHgloQAAAPpAADqwPgBAAVo6+PLIsAAAAATY29scm5jbHgABgAGAAYAAAAAABhzdHRzAAAAAAAAAAEAAAABAAAUAAAAABxzdHNjAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAUc3RzegAAAAAAAAAAAAAAEAAABIgAAAAYc3RjbwAAAAAAAAABAAABLAAAAGR1ZHRhAAAAXG1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAAL2lsc3QAAAAnqXRvbwAAAB9kYXRhAAAAAQAAAABMYXZmNjAuMy4xMDA=';
 
 export const cleanupVideoElement = (videoElement, options = {}) => {
 	if (!videoElement) {
 		console.log('[webosVideo] No video element to cleanup');
-		return false;
+		return Promise.resolve(false);
 	}
 
-	try {
-		console.log('[webosVideo] Cleaning up video element resources');
-		console.log('[webosVideo] Cleanup called from:', new Error().stack);
+	console.log('[webosVideo] Cleaning up video element resources');
 
-		if (!videoElement.paused) {
-			videoElement.pause();
-		}
+	try { videoElement.pause(); } catch (e) { /* ignore */ }
 
-		// Force HDR-to-SDR transition: briefly load a minimal SDR video
-		// This switches the webOS decoder pipeline from HDR back to SDR
-		// before we fully release the hardware decoder
-		if (isWebOS()) {
-			try {
-				videoElement.src = SDR_RESET_VIDEO;
-				videoElement.load();
-				console.log('[webosVideo] Loaded SDR reset video to force HDR-to-SDR transition');
-			} catch (e) {
-				console.warn('[webosVideo] SDR reset video failed, continuing cleanup:', e);
-			}
-		}
+	// Remove any <source> children
+	while (videoElement.firstChild) {
+		videoElement.removeChild(videoElement.firstChild);
+	}
 
-		// Now fully clear the source and release the hardware decoder
+	// Detach src and force readyState back to HAVE_NOTHING.
+	const releaseDecoder = () => {
 		videoElement.removeAttribute('src');
 		if (videoElement.srcObject) {
 			videoElement.srcObject = null;
@@ -445,11 +428,39 @@ export const cleanupVideoElement = (videoElement, options = {}) => {
 		}
 
 		console.log('[webosVideo] Video element cleanup complete');
-		return true;
-	} catch (err) {
-		console.error('[webosVideo] Error during video cleanup:', err);
-		return false;
-	}
+	};
+
+	// Force HDR-to-SDR transition via a minimal SDR video.
+	// Wait for loadeddata (500 ms fallback) so the decoder processes it
+	// before we tear it down.
+	return new Promise((resolve) => {
+		try {
+			videoElement.src = SDR_RESET_VIDEO;
+			videoElement.load();
+
+			const onLoaded = () => {
+				videoElement.removeEventListener('loadeddata', onLoaded);
+				clearTimeout(fallbackTimer);
+				releaseDecoder();
+				resolve(true);
+			};
+
+			// Fallback if loadeddata never fires (e.g. base64 decode issue)
+			const fallbackTimer = setTimeout(() => {
+				videoElement.removeEventListener('loadeddata', onLoaded);
+				console.warn('[webosVideo] SDR reset loadeddata timeout, releasing anyway');
+				releaseDecoder();
+				resolve(true);
+			}, 500);
+
+			videoElement.addEventListener('loadeddata', onLoaded);
+			console.log('[webosVideo] Loading SDR reset video for HDR-to-SDR transition');
+		} catch (e) {
+			console.warn('[webosVideo] SDR reset failed, releasing directly:', e);
+			releaseDecoder();
+			resolve(true);
+		}
+	});
 };
 
 /**

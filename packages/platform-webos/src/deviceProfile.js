@@ -486,10 +486,7 @@ export const getJellyfinDeviceProfile = async () => {
 	console.log('[deviceProfile] Video Range Types:', videoRangeTypes, '(hdr10:', caps.hdr10, 'hlg:', caps.hlg, 'dolbyVision:', caps.dolbyVision, ')');
 	console.log('[deviceProfile] DirectPlayProfiles:', directPlayProfiles);
 
-	// Transcoding profiles - use HLS for all webOS versions
-	// webOS 5 (Chrome 68) needs hls.js to handle HLS via MSE
-	// webOS 6+ (Chrome 79+) has better native HLS support
-	// Progressive MP4/TS don't work reliably due to timestamp/demuxing issues
+	// Transcoding profiles — native HLS for all webOS versions
 	let transcodingProfiles;
 
 	console.log('[deviceProfile] Using HLS transcoding for webOS', caps.webosVersion);

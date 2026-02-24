@@ -1,7 +1,6 @@
 import {useState, useEffect, useCallback, useRef, useMemo} from 'react';
 import Spotlight from '@enact/spotlight';
 import Button from '@enact/sandstone/Button';
-import Hls from 'hls.js';
 import * as playback from '../../services/playback';
 import {getImageUrl} from '../../utils/helpers';
 import {getServerUrl} from '../../services/jellyfinApi';
@@ -59,7 +58,6 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 	const [hasTriedTranscode, setHasTriedTranscode] = useState(false);
 	const [focusRow, setFocusRow] = useState('top');
 	const [isAudioMode, setIsAudioMode] = useState(false);
-	const [isDolbyVision, setIsDolbyVision] = useState(false);
 
 	// Audio playlist tracking
 	const audioPlaylistIndex = useMemo(() => {
@@ -69,17 +67,9 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 	const hasNextTrack = audioPlaylist && audioPlaylistIndex >= 0 && audioPlaylistIndex < audioPlaylist.length - 1;
 	const hasPrevTrack = audioPlaylist && audioPlaylistIndex > 0;
 
-	// Detect Dolby Vision from a mediaSource's video stream VideoRangeType.
-	// DV content must bypass hls.js (MSE) to preserve RPU metadata.
-	// The native <video> element feeds the full bitstream to the hardware DV decoder.
-	const detectDolbyVision = useCallback((mediaSource) => {
-		const videoStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
-		const rangeType = (videoStream?.VideoRangeType || '').toUpperCase();
-		return rangeType.includes('DOVI') || rangeType === 'DOLBYVISION';
-	}, []);
+
 
 	const videoRef = useRef(null);
-	const hlsRef = useRef(null);
 	const positionRef = useRef(0);
 	const playSessionRef = useRef(null);
 	const runTimeRef = useRef(0);
@@ -88,10 +78,10 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 	const hasTriggeredNextEpisodeRef = useRef(false);
 	const unregisterAppStateRef = useRef(null);
 	const controlsTimeoutRef = useRef(null);
-	const hlsRecoveryRef = useRef({ attempts: 0, lastErrorTime: 0 });
 	const lastSeekTargetRef = useRef(null);
 	const seekingTranscodeRef = useRef(false);
 	const seekDebounceTimerRef = useRef(null);
+	const isCleaningUpRef = useRef(false);
 	const transcodeOffsetTicksRef = useRef(0);
 	const transcodeOffsetDetectedRef = useRef(true);
 	const playbackStartTimeoutRef = useRef(null);
@@ -222,11 +212,9 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 				setMimeType(result.mimeType || 'video/mp4');
 				setPlayMethod(result.playMethod);
 				setMediaSourceId(result.mediaSourceId);
-				setIsDolbyVision(detectDolbyVision(result.mediaSource));
 				playSessionRef.current = result.playSessionId;
 
 				positionRef.current = startPosition;
-				hlsRecoveryRef.current = { attempts: 0, lastErrorTime: 0 };
 				lastSeekTargetRef.current = null;
 				seekingTranscodeRef.current = false;
 
@@ -403,9 +391,17 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 				clearTimeout(seekDebounceTimerRef.current);
 			}
 
-			cleanupVideoElement(videoElement);
+			// Quick sync release — handleBack/handleEnded already did the
+			// full async cleanup with SDR reset.  This is only a safety net
+			// for unmount paths that bypass those handlers (settings change, etc.).
+			isCleaningUpRef.current = true;
+			if (videoElement) {
+				try { videoElement.pause(); } catch (e) { /* ignore */ }
+				videoElement.removeAttribute('src');
+				videoElement.load();
+			}
 		};
-	}, [item, resume, selectedQuality, settings.maxBitrate, settings.preferTranscode, settings.forceDirectPlay, settings.subtitleMode, settings.skipIntro, initialAudioIndex, initialSubtitleIndex, detectDolbyVision]);
+	}, [item, resume, selectedQuality, settings.maxBitrate, settings.preferTranscode, settings.forceDirectPlay, settings.subtitleMode, settings.skipIntro, initialAudioIndex, initialSubtitleIndex]);
 
 	useEffect(() => {
 		if (mediaUrl) {
@@ -425,11 +421,6 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 		console.log('[Player] seekInTranscode: requesting new stream at', seekPositionTicks, 'ticks (', seekPositionTicks / 10000000, 's)');
 
 		try {
-			if (hlsRef.current) {
-				hlsRef.current.destroy();
-				hlsRef.current = null;
-			}
-
 			const result = await playback.getPlaybackInfo(item.Id, {
 				startPositionTicks: seekPositionTicks,
 				maxBitrate: selectedQuality || settings.maxBitrate,
@@ -445,12 +436,9 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 				transcodeOffsetTicksRef.current = seekPositionTicks;
 				transcodeOffsetDetectedRef.current = false;
 
-				hlsRecoveryRef.current = { attempts: 0, lastErrorTime: 0 };
-
 				setMediaUrl(result.url);
 				setPlayMethod(result.playMethod);
 				setMimeType(result.mimeType || 'video/mp4');
-				setIsDolbyVision(detectDolbyVision(result.mediaSource));
 				playSessionRef.current = result.playSessionId;
 
 				console.log('[Player] seekInTranscode: new stream loaded at', seekPositionTicks / 10000000, 'seconds');
@@ -461,7 +449,7 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 		} finally {
 			seekingTranscodeRef.current = false;
 		}
-	}, [item, selectedQuality, settings.maxBitrate, detectDolbyVision]);
+	}, [item, selectedQuality, settings.maxBitrate]);
 
 	// Seek relative to current position with debounced transcode re-requests.
 	// updateSeekPosition: also update the seekbar UI during scrubbing.
@@ -513,131 +501,15 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 
 		const isHls = mediaUrl.includes('.m3u8') || mimeType === 'application/x-mpegURL';
 
-		// Dolby Vision content must use the native <video> HLS player, not hls.js.
-		// hls.js uses MSE (Media Source Extensions) which strips DV RPU NALUs during
-		// demuxing, causing the TV to fall back to the HDR10 base layer. The native
-		// player feeds the full bitstream to the hardware decoder, preserving DV metadata.
-		const useNativeHls = isHls && isDolbyVision;
-
-		if (hlsRef.current) {
-			console.log('[Player] Destroying existing HLS instance');
-			hlsRef.current.destroy();
-			hlsRef.current = null;
-		}
-
-		const setSourceAndPlay = async () => {
-			if (isHls && !useNativeHls) {
-				if (Hls.isSupported()) {
-					console.log('[Player] Using hls.js for HLS playback');
-
-					const hlsStartPosition = (playMethod === 'Transcode' && positionRef.current > 0)
-						? positionRef.current / 10000000
-						: -1; // -1 = default (start of playlist)
-
-					const hls = new Hls({
-						debug: false,
-						enableWorker: true,
-						lowLatencyMode: false,
-						backBufferLength: 90,
-						maxBufferLength: 60,
-						maxMaxBufferLength: 120,
-						startPosition: hlsStartPosition,
-						startFragPrefetch: true,
-						testBandwidth: true,
-						progressive: true,
-						fragLoadingMaxRetry: 10,
-						fragLoadingRetryDelay: 1000,
-						manifestLoadingMaxRetry: 6,
-						manifestLoadingRetryDelay: 1000,
-						levelLoadingMaxRetry: 6,
-						levelLoadingRetryDelay: 1000
-					});
-
-					hlsRef.current = hls;
-
-					hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-						console.log('[Player] HLS media attached');
-						hls.loadSource(mediaUrl);
-					});
-
-					hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
-						console.log('[Player] HLS manifest parsed, levels:', data.levels.length);
-						video.play().then(() => {
-							console.log('[Player] HLS play() promise resolved');
-						}).catch(err => {
-							console.error('[Player] HLS play() promise rejected:', err);
-						});
-					});
-
-					hls.on(Hls.Events.ERROR, (event, data) => {
-						console.error('[Player] HLS error:', data.type, data.details);
-						if (data.fatal) {
-							switch (data.type) {
-								case Hls.ErrorTypes.NETWORK_ERROR:
-									console.log('[Player] HLS fatal network error, trying to recover');
-									hls.startLoad();
-									break;
-								case Hls.ErrorTypes.MEDIA_ERROR: {
-									// Time-gated recovery limiting
-									const now = performance.now();
-									const recovery = hlsRecoveryRef.current;
-
-									if (recovery.attempts === 0 || (now - recovery.lastErrorTime > 3000)) {
-										hlsRecoveryRef.current = { attempts: 1, lastErrorTime: now };
-										console.log('[Player] HLS fatal media error, attempt 1 - recoverMediaError');
-										hls.recoverMediaError();
-									} else if (recovery.attempts === 1) {
-										hlsRecoveryRef.current = { attempts: 2, lastErrorTime: now };
-										console.log('[Player] HLS fatal media error, attempt 2 - swapAudioCodec + recoverMediaError');
-										hls.swapAudioCodec();
-										hls.recoverMediaError();
-									} else {
-										console.error('[Player] HLS media error unrecoverable after', recovery.attempts, 'attempts');
-										hlsRecoveryRef.current = { attempts: 0, lastErrorTime: 0 };
-
-										if (playMethod === 'Transcode') {
-											const seekTarget = lastSeekTargetRef.current != null
-												? lastSeekTargetRef.current
-												: positionRef.current;
-											console.log('[Player] Requesting new transcode stream at position', seekTarget, 'ticks');
-											seekInTranscode(seekTarget);
-										} else {
-											hls.destroy();
-											hlsRef.current = null;
-											setError('Playback failed - media error could not be recovered');
-										}
-									}
-									break;
-								}
-								default:
-									console.error('[Player] HLS unrecoverable error');
-									hls.destroy();
-									hlsRef.current = null;
-									break;
-							}
-						}
-					});
-
-					hls.attachMedia(video);
-					return;
-				} else {
-					console.warn('[Player] HLS not supported, falling back to direct playback');
-				}
-			}
-
-			if (useNativeHls) {
-				console.log('[Player] Using native HLS for Dolby Vision — bypassing hls.js to preserve DV RPU metadata');
-			}
-
+		const setSourceAndPlay = () => {
 			console.log('[Player] Setting video source now');
 			video.src = mediaUrl;
 			video.load();
 
-			// Start a playback timeout for non-HLS streams (DirectPlay/DirectStream).
-			// Some formats (e.g. AVI) are listed as platform-supported by LG but may
-			// silently fail in the HTML5 <video> element without firing an error event,
-			// resulting in a black screen. If no timeupdate fires within 8 seconds,
+			// Start a playback timeout — if no timeupdate fires within 8 seconds,
 			// synthetically trigger the error handler to fall back to transcoding.
+			// Some formats silently fail in the HTML5 <video> element without firing
+			// an error event, resulting in a black screen.
 			if (playbackStartTimeoutRef.current) {
 				clearTimeout(playbackStartTimeoutRef.current);
 			}
@@ -660,23 +532,25 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 			video.play().then(() => {
 				console.log('[Player] play() promise resolved');
 			}).catch(err => {
-				console.error('[Player] play() promise rejected:', err);
+				// "interrupted by a new load request" is normal during source
+				// transitions (e.g. DirectPlay → Transcode fallback).
+				if (err.name === 'AbortError') {
+					console.log('[Player] play() aborted (source transition) — expected');
+				} else {
+					console.error('[Player] play() promise rejected:', err);
+				}
 			});
 		};
 
 		setSourceAndPlay();
 
 		return () => {
-			if (hlsRef.current) {
-				hlsRef.current.destroy();
-				hlsRef.current = null;
-			}
 			if (playbackStartTimeoutRef.current) {
 				clearTimeout(playbackStartTimeoutRef.current);
 				playbackStartTimeoutRef.current = null;
 			}
 		};
-	}, [mediaUrl, isLoading, mimeType, playMethod, isDolbyVision, seekInTranscode]);
+	}, [mediaUrl, isLoading, mimeType, playMethod]);
 
 	const showControls = useCallback(() => {
 		setControlsVisible(true);
@@ -909,7 +783,6 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 
 	const handlePlaying = useCallback(() => {
 		setIsBuffering(false);
-		hlsRecoveryRef.current = { attempts: 0, lastErrorTime: 0 };
 		if (!seekDebounceTimerRef.current) {
 			lastSeekTargetRef.current = null;
 		}
@@ -918,9 +791,11 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 	const handleEnded = useCallback(async () => {
 		await playback.reportStop(positionRef.current);
 
-		// Cleanup video element before navigating to next episode or exiting
-		// This ensures hardware decoder is released
-		cleanupVideoElement(videoRef.current);
+		// Cleanup video element before navigating to next episode or exiting.
+		// Await ensures HW decoder is fully released before new media loads.
+		isCleaningUpRef.current = true;
+		await cleanupVideoElement(videoRef.current);
+		isCleaningUpRef.current = false;
 
 		// Auto-advance to next track in audio playlist
 		if (hasNextTrack && onPlayNext) {
@@ -933,6 +808,12 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 	}, [onEnded, onPlayNext, nextEpisode, hasNextTrack, audioPlaylist, audioPlaylistIndex]);
 
 	const handleError = useCallback(async () => {
+		// Ignore errors fired during cleanup (SDR reset video triggers error code 4)
+		if (isCleaningUpRef.current) {
+			console.log('[Player] Ignoring error during cleanup');
+			return;
+		}
+
 		const video = videoRef.current;
 		let errorMessage = 'Playback failed.';
 
@@ -989,7 +870,6 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 					setMediaUrl(result.url);
 					setPlayMethod(result.playMethod);
 					setMimeType(result.mimeType || 'video/mp4');
-					setIsDolbyVision(detectDolbyVision(result.mediaSource));
 					playSessionRef.current = result.playSessionId;
 					return;
 				}
@@ -1000,7 +880,7 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 		}
 
 		setError(errorMessage);
-	}, [hasTriedTranscode, playMethod, item, selectedQuality, settings.maxBitrate, detectDolbyVision]);
+	}, [hasTriedTranscode, playMethod, item, selectedQuality, settings.maxBitrate]);
 
 	const handleImageError = useCallback((e) => {
 		e.target.style.display = 'none';
@@ -1013,7 +893,9 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 			: positionRef.current;
 		await playback.reportStop(currentPos);
 
-		cleanupVideoElement(videoRef.current);
+		isCleaningUpRef.current = true;
+		await cleanupVideoElement(videoRef.current);
+		isCleaningUpRef.current = false;
 
 		onBack?.();
 	}, [onBack, cancelNextEpisodeCountdown]);
@@ -1134,12 +1016,11 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 				setMediaUrl(newUrl);
 				if (result.playMethod) setPlayMethod(result.playMethod);
 				setMimeType(result.mimeType || 'video/mp4');
-				setIsDolbyVision(detectDolbyVision(result.mediaSource));
 			}
 		} catch (err) {
 			console.error('[Player] Failed to change audio:', err);
 		}
-	}, [playMethod, closeModal, audioStreams, detectDolbyVision]);
+	}, [playMethod, closeModal, audioStreams]);
 
 	const handleSelectSubtitle = useCallback(async (e) => {
 		const index = parseInt(e.currentTarget.dataset.index, 10);
