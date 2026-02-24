@@ -589,7 +589,8 @@ const AppContent = (props) => {
 		panelIndex !== PANELS.PLAYER &&
 		panelIndex !== PANELS.LIBRARY &&
 		panelIndex !== PANELS.ADD_SERVER &&
-		panelIndex !== PANELS.ADD_USER;
+		panelIndex !== PANELS.ADD_USER &&
+		!(panelIndex === PANELS.DETAILS && ['Playlist', 'MusicAlbum', 'MusicArtist'].includes(selectedItem?.Type));
 
 	return (
 		<div className={css.app} {...props}>

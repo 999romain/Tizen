@@ -40,6 +40,76 @@
 	font-weight: 400;
 }
 
+/* ── Breadcrumb (folder view) ────────────────────────────── */
+.breadcrumb {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+.breadcrumbSegment {
+	display: inline-flex;
+	align-items: center;
+}
+
+.breadcrumbItem {
+	background: none;
+	border: 2px solid transparent;
+	border-radius: 6px;
+	color: rgba(255, 255, 255, 0.6);
+	font-size: 26px;
+	font-weight: 600;
+	padding: 2px 8px;
+	cursor: pointer;
+	transition: all 0.15s ease;
+
+	&:focus {
+		outline: none;
+		color: white;
+		border-color: @accent;
+		background: rgba(255, 255, 255, 0.08);
+	}
+}
+
+.breadcrumbSep {
+	font-size: 28px;
+	color: rgba(255, 255, 255, 0.3);
+	margin: 0 4px;
+}
+
+.breadcrumbCurrent {
+	font-size: 32px;
+	font-weight: 700;
+	color: white;
+	padding: 2px 8px;
+}
+
+/* ── Folder label (on cards) ─────────────────────────────── */
+.folderLabel {
+	display: flex;
+	align-items: center;
+	padding: 6px 4px 2px;
+	font-size: 13px;
+	color: rgba(255, 255, 255, 0.7);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+
+	span {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+}
+
+.folderIcon {
+	width: 14px;
+	height: 14px;
+	fill: rgba(255, 255, 255, 0.5);
+	margin-right: 5px;
+	flex-shrink: 0;
+}
+
 /* ── Focused item info ───────────────────────────────────── */
 .focusedInfo {
 	padding: 4px 48px 0;
