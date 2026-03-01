@@ -98,6 +98,7 @@ const AppContent = (props) => {
 	const backHandlerRef = useRef(null);
 	const detailsItemStackRef = useRef([]);
 	const jellyseerrItemStackRef = useRef([]);
+	const prevUserIdRef = useRef(null);
 	const [photoViewerItem, setPhotoViewerItem] = useState(null);
 	const [photoViewerItems, setPhotoViewerItems] = useState([]);
 	const [comicViewerItem, setComicViewerItem] = useState(null);
@@ -248,6 +249,20 @@ const AppContent = (props) => {
 			}
 		};
 	}, [isAuthenticated, performAppCleanup]);
+
+	useEffect(() => {
+		if (!isAuthenticated || !user?.Id) {
+			prevUserIdRef.current = null;
+			return;
+		}
+
+		if (user.Id !== prevUserIdRef.current) {
+			prevUserIdRef.current = user.Id;
+			setPanelHistory([]);
+			setPanelIndex(PANELS.BROWSE);
+		}
+	}, [user?.Id, isAuthenticated]);
+
 
 	useEffect(() => {
 		if (!isLoading && !authChecked) {
