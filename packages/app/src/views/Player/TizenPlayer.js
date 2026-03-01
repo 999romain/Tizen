@@ -1196,7 +1196,14 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 					}
 					return;
 				}
-				// Any other key shows controls
+				if ((key === 'Enter' || e.keyCode === 13) && (showSkipIntro || showSkipCredits || showNextEpisode)) {
+					return;
+				}
+				if (key === 'Enter' || e.keyCode === 13) {
+					e.preventDefault();
+					handlePlayPause();
+					return;
+				}
 				e.preventDefault();
 				showControls();
 				return;
@@ -1229,16 +1236,11 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 				}
 			}
 
-			// Play/Pause with Enter when controls not focused
-			if ((key === 'Enter' || e.keyCode === 13) && !controlsVisible && !activeModal) {
-				handlePlayPause();
-				return;
-			}
 		};
 
 		window.addEventListener('keydown', handleKeyDown, true);
 		return () => window.removeEventListener('keydown', handleKeyDown, true);
-	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleForward, handleRewind, currentTime, duration, settings.seekStep, handlePopupKeyDown, bottomButtons.length, scheduleDeferredSeek]);
+	}, [controlsVisible, activeModal, closeModal, hideControls, handleBack, showControls, handlePlayPause, handleForward, handleRewind, currentTime, duration, settings.seekStep, handlePopupKeyDown, bottomButtons.length, scheduleDeferredSeek, showSkipIntro, showSkipCredits, showNextEpisode]);
 
 	// Calculate progress - use seekPosition when actively seeking for smooth scrubbing
 	const displayTime = isSeeking ? (seekPosition / 10000000) : currentTime;

@@ -1475,13 +1475,7 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 				handleBack();
 				return;
 			}
-			
-			if ((key === 'Enter' || e.keyCode === 13) && !controlsVisible && !showSkipIntro && !showSkipCredits && !showNextEpisode) {
-				e.preventDefault();
-				handlePlayPause();
-				return;
-			}
-			
+
 			// Left/Right when controls hidden -> show controls and focus on seekbar
 			if (!controlsVisible && !activeModal) {
 				if (key === 'ArrowLeft' || e.keyCode === 37 || key === 'ArrowRight' || e.keyCode === 39) {
@@ -1490,7 +1484,6 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 					setFocusRow('progress');
 					setIsSeeking(true);
 					setSeekPosition(Math.floor(currentTime * 10000000));
-					// Apply the seek step immediately
 					const step = settings.seekStep;
 					if (key === 'ArrowLeft' || e.keyCode === 37) {
 						seekByOffset(-step, true);
@@ -1500,6 +1493,11 @@ const Player = ({item, resume, initialAudioIndex, initialSubtitleIndex, onEnded,
 					return;
 				}
 				if ((key === 'Enter' || e.keyCode === 13) && (showSkipIntro || showSkipCredits || showNextEpisode)) {
+					return;
+				}
+				if (key === 'Enter' || e.keyCode === 13) {
+					e.preventDefault();
+					handlePlayPause();
 					return;
 				}
 				e.preventDefault();
