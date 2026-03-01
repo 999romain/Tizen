@@ -1,10 +1,11 @@
 {
 	"name": "moonfin",
-	"version": "2.0.1",
+	"version": "2.1.0",
 	"private": true,
 	"workspaces": [
 		"packages/*"
 	],
+	"//build": "Append -- <version> to bump before building (npm run build:webos -- 2.1.0)",
 	"scripts": {
 		"build:webos": "cd packages/build-webos && node build.js",
 		"build:tizen": "cd packages/build-tizen && node scripts/build-wgt.js",

@@ -29,6 +29,14 @@ const shouldInstall = args.includes('--install');
 const isDev = args.includes('--dev');  // Use --dev for debug builds
 const isTizen24 = args.includes('--tizen24');  // Target Tizen 2.4 (2016 K-series, Chromium ~47)
 
+// ── Optional version bump: npm run build:tizen -- 2.2.0 ──
+const versionArg = args.find(a => /^\d+\.\d+\.\d+$/.test(a));
+if (versionArg) {
+	console.log(`\n Bumping Tizen version to ${versionArg}...\n`);
+	execSync(`node ${path.join(REPO_ROOT, 'scripts', 'bump-version.js')} tizen ${versionArg}`, {stdio: 'inherit'});
+	console.log();
+}
+
 // Samsung certificate signing configuration
 const SAMSUNG_CERT_PROFILE = process.env.TIZEN_SIGN_PROFILE || 'Moonfin';
 const SAMSUNG_CERT_DIR = path.join(process.env.HOME, 'SamsungCertificate', 'Moonfin');

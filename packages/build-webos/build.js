@@ -59,6 +59,14 @@ const copyDirRecursive = (src, dest) => {
 	}
 };
 
+// ── Optional version bump: npm run build:webos -- 2.2.0 ──
+const versionArg = process.argv.find(a => /^\d+\.\d+\.\d+$/.test(a));
+if (versionArg) {
+	console.log(`\n Bumping webOS version to ${versionArg}...\n`);
+	execSync(`node ${path.join(ROOT_DIR, 'scripts', 'bump-version.js')} webos ${versionArg}`, {stdio: 'inherit'});
+	console.log();
+}
+
 const appPkg = require(path.join(APP_DIR, 'package.json'));
 
 // Resolve @moonfin/* aliases to absolute paths so webpack resolves them
