@@ -61,6 +61,22 @@ function patchFile(relPath, patches) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PATCH 0: globalThis guard in @enact/core/platform
+//
+// Safety net: polyfills.js and the build-wgt.js <script> both define
+// globalThis before Enact loads, but we also patch the source directly.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n[Patch 0] @enact/core/platform — globalThis guard');
+
+patchFile('@enact/core/platform/platform.js', [
+	{
+		find: '/* global globalThis */ /**',
+		replace: '/* global globalThis */ if(typeof globalThis==="undefined"){if(typeof self!=="undefined"){self.globalThis=self;}else if(typeof window!=="undefined"){window.globalThis=window;}} /**',
+		description: 'Add inline globalThis polyfill before first use'
+	}
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PATCH 1: Enable PostCSS custom-properties compilation
 //
 // Changes `features: {'custom-properties': false}` to resolve all var()

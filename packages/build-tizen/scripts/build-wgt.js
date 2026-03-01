@@ -223,42 +223,74 @@ async function main() {
 		warn('banner-dark.png not found at ' + bannerSrc);
 	}
 	
-	// Step 2.5: Patch index.html to fix ilib XHR file:// issue on Tizen
-	log('Patching index.html for Tizen file:// compatibility...');
+	// Step 2.5: Patch index.html for Tizen compatibility
+	log('Patching index.html for Tizen compatibility...');
 	const indexPath = path.join(DIST, 'index.html');
 	if (fs.existsSync(indexPath)) {
 		let html = fs.readFileSync(indexPath, 'utf8');
 		
-		// Add XHR patch script before the main.js script tag
-		// Note: whatwg-fetch polyfill uses XHR internally. This patch only intercepts
-		// URLs containing 'file://', 'ilib', or 'locale' which won't match Jellyfin API calls.
-		const xhrPatch = `<script>
-// Patch XMLHttpRequest for Tizen file:// protocol compatibility
-// ilib tries to load locale files via XHR which fails on file:// URLs
+		// Pre-boot patches injected before main.js.
+		// Order: globalThis → error overlay → XHR mock
+		const preBootPatches = `<script>
+// globalThis polyfill (needed on Tizen 2.4–5.5, webOS 3–5)
+(function() {
+	if (typeof globalThis === 'undefined') {
+		if (typeof self !== 'undefined') self.globalThis = self;
+		else if (typeof window !== 'undefined') window.globalThis = window;
+	}
+})();
+</script>
+<script>
+// Boot error overlay — shows JS errors on-screen when no debug console is available
+(function() {
+	var shown = false;
+	function showError(msg) {
+		if (shown) return;
+		shown = true;
+		var el = document.createElement('div');
+		el.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:999999;background:#111;color:#f44;'
+			+ 'font:16px/1.5 monospace;padding:40px;overflow:auto;white-space:pre-wrap;';
+		el.textContent = 'Moonfin boot error — please report this:\\n\\n' + msg;
+		document.body ? document.body.appendChild(el) : document.addEventListener('DOMContentLoaded', function() { document.body.appendChild(el); });
+	}
+	window.addEventListener('error', function(e) { showError(e.message + '\\n' + (e.filename || '') + ':' + (e.lineno || '')); });
+	window.addEventListener('unhandledrejection', function(e) { showError('Unhandled promise rejection:\\n' + (e.reason && e.reason.stack || e.reason || e)); });
+})();
+</script>
+<script>
+// XHR mock — intercepts ilib/locale XHR requests that fail on file:// protocol.
+// Handles both sync and async XHR (ilib may use sync). Does not call origOpen
+// on mocked URLs to avoid WebKit SecurityError.
 (function() {
 	var OrigXHR = window.XMLHttpRequest;
 	window.XMLHttpRequest = function() {
 		var xhr = new OrigXHR();
 		var origOpen = xhr.open;
+		var isAsync = true;
 		xhr.open = function(method, url) {
-			// If it's a file:// URL trying to load ilib locale data, mock it
 			if (url && (url.indexOf('file://') === 0 || url.indexOf('ilib') !== -1 || url.indexOf('locale') !== -1)) {
 				this._mockIlib = true;
 				this._url = url;
+				isAsync = arguments.length < 3 || !!arguments[2];
+				return;
 			}
+			isAsync = arguments.length < 3 || !!arguments[2];
 			return origOpen.apply(this, arguments);
 		};
 		var origSend = xhr.send;
 		xhr.send = function() {
 			if (this._mockIlib) {
 				var self = this;
-				setTimeout(function() {
-					Object.defineProperty(self, 'status', { value: 404, writable: false });
-					Object.defineProperty(self, 'readyState', { value: 4, writable: false });
-					Object.defineProperty(self, 'responseText', { value: '{}', writable: false });
-					if (self.onreadystatechange) self.onreadystatechange();
-					if (self.onload) self.onload();
-				}, 0);
+				var fire = function() {
+					try { Object.defineProperty(self, 'readyState', {value: 4, configurable: true}); } catch(e) {}
+					try { Object.defineProperty(self, 'status',     {value: 404, configurable: true}); } catch(e) {}
+					try { Object.defineProperty(self, 'statusText', {value: 'Not Found', configurable: true}); } catch(e) {}
+					try { Object.defineProperty(self, 'responseText', {value: '{}', configurable: true}); } catch(e) {}
+					try { Object.defineProperty(self, 'response',   {value: '{}', configurable: true}); } catch(e) {}
+					try { if (self.onreadystatechange) self.onreadystatechange(); } catch(e) {}
+					try { if (self.onload) self.onload(); } catch(e) {}
+				};
+				if (isAsync) { setTimeout(fire, 0); } else { fire(); }
 				return;
 			}
 			return origSend.apply(this, arguments);
@@ -269,9 +301,9 @@ async function main() {
 </script>
 `;
 		// Insert before the main.js script tag
-		html = html.replace(/<script defer="defer" src="main\.js"><\/script>/, xhrPatch + '<script defer="defer" src="main.js"></script>');
+		html = html.replace(/<script defer="defer" src="main\.js"><\/script>/, preBootPatches + '<script defer="defer" src="main.js"></script>');
 		fs.writeFileSync(indexPath, html);
-		success('Patched index.html with XHR fix for ilib');
+		success('Patched index.html (globalThis polyfill + error overlay + XHR mock)');
 	}
 	
 	// Step 3: Copy Tizen config files

@@ -1,10 +1,8 @@
-/* global ENACT_PACK_ISOMORPHIC, Element, NodeList */
-import 'whatwg-fetch';
+/* global ENACT_PACK_ISOMORPHIC, Element */
 
-// NodeList.forEach polyfill for Tizen 2.4 WebKit (missing from babel-preset-enact's core-js exclusions)
-if (typeof NodeList !== 'undefined' && !NodeList.prototype.forEach) {
-	NodeList.prototype.forEach = Array.prototype.forEach;
-}
+// Boot-critical polyfills — must be the very first import.
+import './polyfills';
+import 'whatwg-fetch';
 
 import {createRoot, hydrateRoot} from 'react-dom/client';
 
