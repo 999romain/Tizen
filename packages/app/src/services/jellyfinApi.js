@@ -80,7 +80,7 @@ const request = async (endpoint, options = {}) => {
 	const response = await fetch(url, {
 		method: options.method || 'GET',
 		headers: {
-			'X-Emby-Authorization': getAuthHeader(),
+			'Authorization': getAuthHeader(),
 			'Content-Type': 'application/json',
 			...options.headers
 		},
@@ -365,7 +365,7 @@ export const createApiForServer = (serverUrl, token, userId) => {
 		const response = await fetch(requestUrl, {
 			method: options.method || 'GET',
 			headers: {
-				'X-Emby-Authorization': getServerAuthHeader(),
+				'Authorization': getServerAuthHeader(),
 				'Content-Type': 'application/json',
 				...options.headers
 			},

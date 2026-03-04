@@ -294,7 +294,7 @@ async function apiRequest (endpoint) {
 	const response = await fetch(`${serverUrl}${endpoint}`, {
 		method: 'GET',
 		headers: {
-			'X-Emby-Authorization': getAuthHeader(),
+			'Authorization': getAuthHeader(),
 			'Content-Type': 'application/json'
 		}
 	});

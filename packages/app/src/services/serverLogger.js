@@ -112,7 +112,6 @@ await fetch(url, {
 method: 'POST',
 headers: {
 'Content-Type': 'text/plain',
-'X-Emby-Authorization': `MediaBrowser Token="${auth.accessToken}"`,
 'Authorization': `MediaBrowser Token="${auth.accessToken}"`,
 'X-MediaBrowser-Token': auth.accessToken
 },

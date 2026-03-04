@@ -117,7 +117,7 @@ export const fetchRatings = async (serverUrl, item, options = {}) => {
 		const url = `${baseUrl}/Moonfin/MdbList/Ratings?type=${encodeURIComponent(contentType)}&tmdbId=${encodeURIComponent(tmdbId)}`;
 		const fetchOptions = {
 			headers: {
-				'X-Emby-Authorization': getAuthHeader()
+				'Authorization': getAuthHeader()
 			}
 		};
 		if (options.signal) {
