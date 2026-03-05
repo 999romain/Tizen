@@ -563,6 +563,186 @@ patchFile('@enact/cli/node_modules/babel-preset-enact/index.js', [
 ]);
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PATCH 13: VirtualList — add -webkit-transform for legacy WebKit
+//
+// VirtualGridList positions every item via JS-set `transform: translate3d(...)`.
+// webOS 2 (WebKit/538.2 ≈ Safari 7-8) and Tizen 2.4 (WebKit r152340) only
+// support the prefixed `-webkit-transform` property — the unprefixed
+// `transform` is silently ignored. This causes every grid item to remain at
+// position (0,0), stacking on top of each other so only one item is visible.
+//
+// webOS 3+ (Chromium 38+) and Tizen 3+ (Chromium) support unprefixed
+// `transform` so they are unaffected. Setting both properties is harmless on
+// Chromium — the unprefixed version takes precedence.
+//
+// Patched locations in VirtualListBasic.js:
+//   1. composeStyle()            — React inline style object
+//   2. setScrollPosition()       — content container scroll via DOM
+//   3. applyItemPositionToDOMElement() — individually-sized item repositioning
+//   4. calculateMetrics() reset  — clears transform when recalculating
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n[Patch 13] VirtualList — add -webkit-transform for legacy WebKit');
+
+patchFile('@enact/ui/VirtualList/VirtualListBasic.js', [
+	{
+		// 1. composeStyle — React inline styles use camelCase WebkitTransform
+		find: `      var _this$getXY2 = this.getXY(primaryPosition, secondaryPosition),
+        x = _this$getXY2.x,
+        y = _this$getXY2.y,
+        style = {
+          /* FIXME: RTL / this calculation only works for Chrome */
+          transform: "translate3d(".concat(this.props.rtl ? -x : x, "px, ").concat(y, "px, 0)")
+        };`,
+		replace: `      var _this$getXY2 = this.getXY(primaryPosition, secondaryPosition),
+        x = _this$getXY2.x,
+        y = _this$getXY2.y,
+        _transformValue = "translate3d(".concat(this.props.rtl ? -x : x, "px, ").concat(y, "px, 0)"),
+        style = {
+          /* FIXME: RTL / this calculation only works for Chrome */
+          transform: _transformValue,
+          WebkitTransform: _transformValue
+        };`,
+		description: 'composeStyle: add WebkitTransform for Safari 7-8 (webOS 2 / Tizen 2.4)'
+	},
+	{
+		// 2. setScrollPosition — DOM style
+		find: `this.contentRef.current.style.transform = "translate3d(".concat(rtl ? x : -x, "px, -").concat(y, "px, 0)");
+        this.didScroll(x, y);`,
+		replace: `this.contentRef.current.style.transform = "translate3d(".concat(rtl ? x : -x, "px, -").concat(y, "px, 0)");
+        this.contentRef.current.style.webkitTransform = this.contentRef.current.style.transform;
+        this.didScroll(x, y);`,
+		description: 'setScrollPosition: add webkitTransform for scroll container'
+	},
+	{
+		// 3a. applyItemPositionToDOMElement — vertical
+		find: `childNode.style.transform = "translate3d(0, ".concat(position, "px, 0)");
+        } else {
+          childNode.style.transform = "translate3d(".concat(position * (rtl ? -1 : 1), "px, 0, 0)");
+        }`,
+		replace: `childNode.style.transform = "translate3d(0, ".concat(position, "px, 0)");
+          childNode.style.webkitTransform = childNode.style.transform;
+        } else {
+          childNode.style.transform = "translate3d(".concat(position * (rtl ? -1 : 1), "px, 0, 0)");
+          childNode.style.webkitTransform = childNode.style.transform;
+        }`,
+		description: 'applyItemPositionToDOMElement: add webkitTransform for item repositioning'
+	},
+	{
+		// 4. calculateMetrics reset
+		find: `this.contentRef.current.style.transform = null;\n      } else if (scrollMode === 'native' && node`,
+		replace: `this.contentRef.current.style.transform = null;\n        this.contentRef.current.style.webkitTransform = null;\n      } else if (scrollMode === 'native' && node`,
+		description: 'calculateMetrics: also reset webkitTransform'
+	}
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH 14: Scrollbar — add -webkit-transform for legacy WebKit
+//
+// The scrollbar thumb fallback (PATCH 5) uses style.transform for centering.
+// Add the prefixed version for webOS 2 / Tizen 2.4.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n[Patch 14] Scrollbar thumb — add -webkit-transform for legacy WebKit');
+
+patchFile('@enact/ui/useScroll/Scrollbar.js', [
+	{
+		find: `element._thumbEl.style.transform = 'translateY(-50%)';
+      }
+    }
+  }
+};`,
+		replace: `element._thumbEl.style.transform = 'translateY(-50%)';
+        element._thumbEl.style.webkitTransform = 'translateY(-50%)';
+      }
+    }
+  }
+};`,
+		description: 'Scrollbar thumb: add webkitTransform for horizontal centering'
+	}
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH 15: UiVirtualListBase — add -webkit-transform for legacy WebKit
+//
+// Same issue as PATCH 13 but for the non-sandstone base class. This is the
+// alternative VirtualList implementation that may be used depending on the
+// code path. All four transform locations need the prefixed version.
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n[Patch 15] UiVirtualListBase — add -webkit-transform for legacy WebKit');
+
+patchFile('@enact/ui/VirtualList/UiVirtualListBase.js', [
+	{
+		// 1. composeStyle — React inline styles
+		find: `          style = {
+            position: 'absolute',
+            /* FIXME: RTL / this calculation only works for Chrome */
+            transform: "translate3d(".concat(this.props.rtl ? -x : x, "px, ").concat(y, "px, 0)")
+          };`,
+		replace: `          _transformValue = "translate3d(".concat(this.props.rtl ? -x : x, "px, ").concat(y, "px, 0)"),
+          style = {
+            position: 'absolute',
+            /* FIXME: RTL / this calculation only works for Chrome */
+            transform: _transformValue,
+            WebkitTransform: _transformValue
+          };`,
+		description: 'composeStyle: add WebkitTransform for Safari 7-8 (webOS 2 / Tizen 2.4)'
+	},
+	{
+		// 2. setScrollPosition — DOM style
+		find: `this.contentRef.current.style.transform = "translate3d(".concat(rtl ? x : -x, "px, -").concat(y, "px, 0)");
+
+          // The \`x\`, \`y\``,
+		replace: `this.contentRef.current.style.transform = "translate3d(".concat(rtl ? x : -x, "px, -").concat(y, "px, 0)");
+          this.contentRef.current.style.webkitTransform = this.contentRef.current.style.transform;
+
+          // The \`x\`, \`y\``,
+		description: 'setScrollPosition: add webkitTransform for scroll container'
+	},
+	{
+		// 3. applyItemPositionToDOMElement — vertical and horizontal
+		find: `childNode.style.transform = "translate3d(0, ".concat(position, "px, 0)");
+          } else {
+            childNode.style.transform = "translate3d(".concat(position * (rtl ? -1 : 1), "px, 0, 0)");
+          }`,
+		replace: `childNode.style.transform = "translate3d(0, ".concat(position, "px, 0)");
+            childNode.style.webkitTransform = childNode.style.transform;
+          } else {
+            childNode.style.transform = "translate3d(".concat(position * (rtl ? -1 : 1), "px, 0, 0)");
+            childNode.style.webkitTransform = childNode.style.transform;
+          }`,
+		description: 'applyItemPositionToDOMElement: add webkitTransform for item repositioning'
+	},
+	{
+		// 4. calculateMetrics reset
+		find: `this.contentRef.current.style.transform = null;
+        }`,
+		replace: `this.contentRef.current.style.transform = null;
+          this.contentRef.current.style.webkitTransform = null;
+        }`,
+		description: 'calculateMetrics: also reset webkitTransform'
+	}
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH 16: Arrangers — add -webkit-transform for panel transitions
+//
+// The AnimateOnIdle.fill() method sets node.style.transform for panel slide
+// animations. Without -webkit-transform, panel transitions won't work on
+// webOS 2 / Tizen 2.4 (legacy WebKit).
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n[Patch 16] Arrangers — add -webkit-transform for panel transitions');
+
+patchFile('@enact/sandstone/internal/Panels/Arrangers.js', [
+	{
+		find: `node.style.transform = keyframe.transform;
+    }`,
+		replace: `node.style.transform = keyframe.transform;
+      node.style.webkitTransform = keyframe.transform;
+    }`,
+		description: 'AnimateOnIdle.fill: add webkitTransform for panel transitions'
+	}
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Summary
 // ─────────────────────────────────────────────────────────────────────────────
 console.log(`\n✓ Legacy patches complete: ${patchCount} files modified, ${skipCount} skipped\n`);

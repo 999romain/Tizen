@@ -51,6 +51,7 @@ const startBounce = (ref, animRef, width, height) => {
 
 		if (ref.current) {
 			ref.current.style.transform = 'translate(' + Math.round(x) + 'px, ' + Math.round(y) + 'px)';
+			ref.current.style.webkitTransform = ref.current.style.transform;
 		}
 
 		animRef.current = setTimeout(animate, FRAME_DELAY);

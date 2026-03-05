@@ -7,20 +7,27 @@ left: 0;
 right: 0;
 bottom: 0;
 overflow: hidden;
+background: #1a1a2e;
+background: -webkit-linear-gradient(315deg, #1a1a2e 0%, #16213e 100%);
 background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
 }
 
 .content {
 position: relative;
 height: 100%;
+display: -webkit-flex;
 display: flex;
+-webkit-flex-direction: column;
 flex-direction: column;
 overflow: visible;
 }
 
 .header {
+display: -webkit-flex;
 display: flex;
+-webkit-align-items: baseline;
 align-items: baseline;
+-webkit-justify-content: center;
 justify-content: center;
 padding: 24px 48px 0;
 }
@@ -47,8 +54,11 @@ font-weight: 400;
 }
 
 .toolbar {
+display: -webkit-flex;
 display: flex;
+-webkit-align-items: center;
 align-items: center;
+-webkit-justify-content: center;
 justify-content: center;
 padding: 10px 48px 10px;
 }
@@ -60,8 +70,11 @@ border-radius: 50%;
 width: 52px;
 height: 52px;
 min-width: 52px;
+display: -webkit-flex;
 display: flex;
+-webkit-align-items: center;
 align-items: center;
+-webkit-justify-content: center;
 justify-content: center;
 cursor: pointer;
 transition: all 0.2s ease;
@@ -85,6 +98,7 @@ fill: white;
 }
 
 .gridContainer {
+-webkit-flex: 1;
 flex: 1;
 overflow: hidden;
 position: relative;

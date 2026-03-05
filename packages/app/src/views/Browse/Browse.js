@@ -50,6 +50,7 @@ const Browse = ({
 	const {api, serverUrl, accessToken, hasMultipleServers, user} = useAuth();
 	const {settings} = useSettings();
 	const unifiedMode = settings.unifiedLibraryMode && hasMultipleServers;
+	const isLegacy = typeof document !== 'undefined' && (' ' + document.documentElement.className + ' ').indexOf(' legacy ') >= 0;
 	const [isLoading, setIsLoading] = useState(true);
 	const [featuredItems, setFeaturedItems] = useState([]);
 	const [currentFeaturedIndex, setCurrentFeaturedIndex] = useState(0);
@@ -772,7 +773,8 @@ const Browse = ({
 		if (browseMode === 'featured') {
 			itemForBackdrop = featuredItems[currentFeaturedIndex];
 			backdropId = getBackdropId(itemForBackdrop);
-		} else if (focusedItem) {
+		} else if (focusedItem && !isLegacy) {
+			// Skip row-level backdrop transitions on legacy devices (webOS 2 / Tizen 2.4)
 			itemForBackdrop = focusedItem;
 			backdropId = getBackdropId(focusedItem);
 		} else {
@@ -811,7 +813,7 @@ const Browse = ({
 				pendingBackdropRef.current = null;
 			}
 		};
-	}, [focusedItem, browseMode, backdropUrl, crossFadeBackdrop, currentFeaturedIndex, featuredItems, getItemServerUrl]);
+	}, [focusedItem, browseMode, backdropUrl, crossFadeBackdrop, currentFeaturedIndex, featuredItems, getItemServerUrl, isLegacy]);
 
 	const handleSelectItem = useCallback((item) => {
 		if (lastFocusedRowRef.current !== null) {

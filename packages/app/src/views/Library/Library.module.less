@@ -7,21 +7,28 @@
 	right: 0;
 	bottom: 0;
 	overflow: hidden;
+	background: #1a1a2e;
+	background: -webkit-linear-gradient(315deg, #1a1a2e 0%, #16213e 100%);
 	background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
 }
 
 .content {
 	position: relative;
 	height: 100%;
+	display: -webkit-flex;
 	display: flex;
+	-webkit-flex-direction: column;
 	flex-direction: column;
 	overflow: visible;
 }
 
 /* ── Header ─────────────────────────────────────────────── */
 .header {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: baseline;
 	align-items: baseline;
+	-webkit-justify-content: center;
 	justify-content: center;
 	padding: 28px 48px 0;
 }
@@ -42,8 +49,11 @@
 
 /* ── Breadcrumb (folder view) ────────────────────────────── */
 .breadcrumb {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
+	-webkit-flex-wrap: wrap;
 	flex-wrap: wrap;
 }
 
@@ -86,7 +96,9 @@
 
 /* ── Folder label (on cards) ─────────────────────────────── */
 .folderLabel {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
 	padding: 6px 4px 2px;
 	font-size: 13px;
@@ -125,7 +137,9 @@
 }
 
 .focusedMeta {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
 	margin-top: 2px;
 	font-size: 15px;
@@ -170,7 +184,9 @@
 
 /* ── Toolbar ─────────────────────────────────────────────── */
 .toolbar {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
 	padding: 12px 48px 14px;
 }
@@ -182,8 +198,11 @@
 	width: 52px;
 	height: 52px;
 	min-width: 52px;
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
+	-webkit-justify-content: center;
 	justify-content: center;
 	cursor: pointer;
 	transition: all 0.2s ease;
@@ -208,9 +227,12 @@
 
 /* ── Letter Navigation ───────────────────────────────────── */
 .letterNav {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
 	margin-left: 20px;
+	-webkit-flex: 1;
 	flex: 1;
 }
 
@@ -245,6 +267,7 @@
 
 /* ── Grid ────────────────────────────────────────────────── */
 .gridContainer {
+	-webkit-flex: 1;
 	flex: 1;
 	overflow: hidden;
 	position: relative;
@@ -326,8 +349,11 @@
 	height: 26px;
 	background: rgba(0, 0, 0, 0.65);
 	border-radius: 50%;
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
+	-webkit-justify-content: center;
 	justify-content: center;
 	z-index: 5;
 	pointer-events: none;
@@ -350,8 +376,11 @@
 	border: 3px solid transparent;
 	border-radius: 8px;
 	background: rgba(255, 255, 255, 0.05);
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
+	-webkit-justify-content: center;
 	justify-content: center;
 }
 
@@ -374,12 +403,15 @@
 
 /* ── Status Bar ──────────────────────────────────────────── */
 .statusBar {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
 	padding: 6px 48px 10px;
 }
 
 .statusText {
+	-webkit-flex: 1;
 	flex: 1;
 	font-size: 14px;
 	color: rgba(255, 255, 255, 0.35);
@@ -392,16 +424,23 @@
 
 /* ── Loading / Empty states ──────────────────────────────── */
 .loading {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
+	-webkit-justify-content: center;
 	justify-content: center;
 	height: 100%;
 }
 
 .empty {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-flex-direction: column;
 	flex-direction: column;
+	-webkit-align-items: center;
 	align-items: center;
+	-webkit-justify-content: center;
 	justify-content: center;
 	height: 100%;
 	font-size: 24px;
@@ -417,7 +456,9 @@
 	bottom: 0;
 	background: rgba(0, 0, 0, 0.45);
 	z-index: 100;
+	display: -webkit-flex;
 	display: flex;
+	-webkit-justify-content: flex-end;
 	justify-content: flex-end;
 }
 
@@ -477,7 +518,9 @@
 
 /* ── Sort / Filter option rows ───────────────────────────── */
 .sortOption {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
 	width: 100%;
 	background: none;
@@ -512,8 +555,11 @@
 
 /* Radio circle */
 .radioCircle {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
+	-webkit-justify-content: center;
 	justify-content: center;
 	width: 22px;
 	height: 22px;
@@ -537,8 +583,11 @@
 
 /* Checkbox square */
 .checkboxSquare {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-align-items: center;
 	align-items: center;
+	-webkit-justify-content: center;
 	justify-content: center;
 	width: 22px;
 	height: 22px;
@@ -571,7 +620,9 @@
 }
 
 .settingRow {
+	display: -webkit-flex;
 	display: flex;
+	-webkit-flex-direction: column;
 	flex-direction: column;
 	width: 100%;
 	background: none;

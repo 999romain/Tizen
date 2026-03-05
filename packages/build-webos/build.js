@@ -101,6 +101,26 @@ try {
 	// Clean intermediate app dist
 	fs.rmSync(path.join(APP_DIR, 'dist'), {recursive: true, force: true});
 
+	// Patch CSS for legacy WebKit (webOS 2 / Tizen 2.4)
+	// PostCSS resolves most vars at build time, but runtime-set CSS vars and
+	// the 'initial' keyword survive minification and break on old WebKit.
+	console.log('\n Patching CSS for legacy WebKit...');
+	const cssFiles = fs.readdirSync(DIST_DIR).filter(f => f.endsWith('.css'));
+	for (const cssFile of cssFiles) {
+		const cssPath = path.join(DIST_DIR, cssFile);
+		let css = fs.readFileSync(cssPath, 'utf8');
+		const origLen = css.length;
+		// 'initial' keyword not supported before Safari 9.1
+		css = css.replace(/background-color:initial/g, 'background-color:rgba(0,0,0,0)');
+		// Resolve any remaining var(--accent-color, #hex) to just the fallback
+		css = css.replace(/var\(--accent-color,\s*([^)]+)\)/g, '$1');
+		css = css.replace(/var\(--sand-accent-color,\s*([^)]+)\)/g, '$1');
+		if (css.length !== origLen) {
+			fs.writeFileSync(cssPath, css);
+			console.log(`  Patched ${cssFile}`);
+		}
+	}
+
 	// Copy banner
 	console.log('\n Copying banner...');
 	const bannerSrc = path.join(APP_DIR, 'resources', 'banner-dark.png');

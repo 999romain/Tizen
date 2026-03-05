@@ -279,14 +279,21 @@ async function main() {
 	}
 
 	if (isLegacy) {
-		const cssPath = path.join(DIST, 'main.css');
-		if (fs.existsSync(cssPath)) {
-			log('Patching main.css for legacy WebKit...');
+		log('Patching CSS for legacy WebKit...');
+		const cssFiles = fs.readdirSync(DIST).filter(f => f.endsWith('.css'));
+		for (const cssFile of cssFiles) {
+			const cssPath = path.join(DIST, cssFile);
 			let css = fs.readFileSync(cssPath, 'utf8');
+			const origLen = css.length;
+			// 'initial' keyword not supported before Safari 9.1
 			css = css.replace(/background-color:initial/g, 'background-color:rgba(0,0,0,0)');
-			css = css.replace(/background(-color)?:#000(?=[;}!])/g, 'background$1:rgba(0,0,0,0)');
-			fs.writeFileSync(cssPath, css);
-			success('Patched main.css for legacy WebKit');
+			// Resolve any remaining var(--accent-color, #hex) to just the fallback
+			css = css.replace(/var\(--accent-color,\s*([^)]+)\)/g, '$1');
+			css = css.replace(/var\(--sand-accent-color,\s*([^)]+)\)/g, '$1');
+			if (css.length !== origLen) {
+				fs.writeFileSync(cssPath, css);
+				log(`  Patched ${cssFile}`);
+			}
 		}
 
 		const splashPath = path.join(DIST, 'splash.png');
